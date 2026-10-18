@@ -16,6 +16,17 @@ export const tmdb = {
       sm: 'w185',
       md: 'h632',
     },
+    still: {
+      sm: 'w185',
+      md: 'w300',
+      lg: 'original',
+    },
+  },
+  cache: {
+    seriesDetails: 60 * 60 * 1000, // 1 hour
+    seriesDetailsOngoing: 10 * 60 * 1000, // 10 min for ongoing shows
+    seasonData: 60 * 60 * 1000, // 1 hour
+    seasonDataOngoing: 10 * 60 * 1000, // 10 min for ongoing shows
   },
   endpoints: {
     trending: '/trending/all/week',
@@ -28,6 +39,7 @@ export const tmdb = {
     upcomingMovies: '/movie/upcoming',
     movieDetails: (id: number) => `/movie/${id}`,
     tvDetails: (id: number) => `/tv/${id}`,
+    tvSeason: (id: number, seasonNumber: number) => `/tv/${id}/season/${seasonNumber}`,
     movieCredits: (id: number) => `/movie/${id}/credits`,
     tvCredits: (id: number) => `/tv/${id}/credits`,
     movieSimilar: (id: number) => `/movie/${id}/similar`,

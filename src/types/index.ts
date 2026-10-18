@@ -27,6 +27,7 @@ export interface TvSeries {
   poster_path: string | null;
   backdrop_path: string | null;
   first_air_date: string;
+  last_air_date?: string;
   vote_average: number;
   vote_count: number;
   genre_ids: number[];
@@ -39,6 +40,7 @@ export interface TvSeries {
   tagline?: string;
   episode_run_time?: number[];
   next_episode_to_air?: Episode | null;
+  last_episode_to_air?: Episode | null;
 }
 
 export interface Season {
