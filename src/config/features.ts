@@ -8,9 +8,14 @@ export const features = {
   reviews: true,
   personPages: true,
   upcomingRail: true,
+  accounts: false,
+  circles: false,
+  appLinks: false,
+  markWatched: true,
 } as const;
 
-export type FeatureFlag = keyof typeof features;
+export type Features = typeof features;
+export type FeatureFlag = keyof Features;
 
 export function isFeatureEnabled(flag: FeatureFlag): boolean {
   return features[flag];

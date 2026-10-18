@@ -80,9 +80,10 @@ function enrichPerson(person: Person): Person {
 }
 
 export const tmdbService = {
-  async getTrending(): Promise<Movie[]> {
+  async getTrending(window: 'day' | 'week' = 'week'): Promise<Movie[]> {
     await delay(200);
-    return [...MOCK_MOVIES].map(m => enrichMovie(m));
+    const movies = window === 'day' ? [...MOCK_MOVIES].reverse() : [...MOCK_MOVIES];
+    return movies.map(m => enrichMovie(m));
   },
 
   async getPopularMovies(page = 1): Promise<PaginatedResponse<Movie>> {
@@ -199,5 +200,34 @@ export const tmdbService = {
   async getTvGenres(): Promise<Genre[]> {
     await delay(100);
     return TV_GENRES;
+  },
+
+  async getLatest(mediaType: 'movie' | 'tv', _filter: any): Promise<(Movie | TvSeries)[]> {
+    await delay(200);
+    if (mediaType === 'tv') {
+      return [...MOCK_TV].sort((a, b) => new Date(b.first_air_date).getTime() - new Date(a.first_air_date).getTime()).map(t => enrichTv(t));
+    }
+    return [...MOCK_MOVIES].sort((a, b) => new Date(b.release_date).getTime() - new Date(a.release_date).getTime()).map(m => enrichMovie(m));
+  },
+
+  async getTopRated(mediaType: 'movie' | 'tv', _filter: any): Promise<(Movie | TvSeries)[]> {
+    await delay(200);
+    if (mediaType === 'tv') {
+      return [...MOCK_TV].sort((a, b) => b.vote_average - a.vote_average).map(t => enrichTv(t));
+    }
+    return [...MOCK_MOVIES].sort((a, b) => b.vote_average - a.vote_average).map(m => enrichMovie(m));
+  },
+
+  async getBestOf(_filter: any): Promise<TvSeries[]> {
+    await delay(200);
+    return [...MOCK_TV].sort((a, b) => b.popularity - a.popularity).map(t => enrichTv(t));
+  },
+
+  async getDiscover(mediaType: 'movie' | 'tv', _filter: any): Promise<(Movie | TvSeries)[]> {
+    await delay(200);
+    if (mediaType === 'tv') {
+      return [...MOCK_TV].map(t => enrichTv(t));
+    }
+    return [...MOCK_MOVIES].map(m => enrichMovie(m));
   },
 };
