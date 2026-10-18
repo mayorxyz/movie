@@ -8,10 +8,12 @@ interface SegmentedTabsProps {
 
 export function SegmentedTabs({ tabs, activeTab, onChange }: SegmentedTabsProps) {
   return (
-    <div className="inline-flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-1">
+    <div className="inline-flex rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] p-1" role="tablist" aria-label="Section options">
       {tabs.map(tab => (
         <button
           key={tab.id}
+          role="tab"
+          aria-selected={activeTab === tab.id}
           onClick={() => onChange(tab.id)}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
             activeTab === tab.id

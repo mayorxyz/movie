@@ -41,8 +41,10 @@ function isAllowedEndpoint(path: string): boolean {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const requestUrl = new URL(req.url || '/', 'http://localhost');
+
   // Health check endpoint
-  if (req.url === '/api/health' || req.url === '/api/tmdb/health') {
+  if (requestUrl.pathname === '/api/health' || requestUrl.pathname === '/api/tmdb/health') {
     const tokenConfigured = !!process.env.TMDB_TOKEN;
     return res.status(200).json({
       status: 'ok',
@@ -63,7 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Extract the path after /api/tmdb/
-  const tmdbPath = req.url?.replace(/^\/api\/tmdb/, '') || '';
+  const tmdbPath = requestUrl.pathname.replace(/^\/api\/tmdb/, '');
   
   if (!tmdbPath || tmdbPath === '/') {
     return res.status(400).json({ error: 'No endpoint specified' });
@@ -78,8 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Build the full TMDB URL with query parameters
-  const queryString = req.url?.includes('?') ? req.url.split('?')[1] : '';
-  const tmdbUrl = `${TMDB_BASE_URL}${tmdbPath}${queryString ? '?' + queryString : ''}`;
+  const tmdbUrl = `${TMDB_BASE_URL}${tmdbPath}${requestUrl.search}`;
 
   try {
     // Forward request to TMDB API

@@ -8,9 +8,11 @@ import { Button } from '../../components/ui/Button';
 import { RatingRing } from '../../components/ui/RatingRing';
 import { Rail } from '../../components/ui/Rail';
 import { PosterCard } from '../../components/ui/PosterCard';
+import { ReleaseBadge } from '../../components/ui/ReleaseBadge';
 import { PageSkeleton } from '../../components/ui/Skeleton';
 import { useWatchlistStore } from '../../store/watchlist';
 import { features } from '../../config/features';
+import { isReleased } from '../../lib/releaseFilters';
 
 export default function MovieDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -53,6 +55,8 @@ export default function MovieDetailPage() {
   if (!movie) return <div className="p-8 text-center text-[var(--color-text-muted)]">Movie not found</div>;
 
   const trailer = videos?.results?.find(v => v.type === 'Trailer' && v.site === 'YouTube');
+  // Direct URLs for unreleased titles still open; hide Watch/Download state.
+  const released = isReleased({ id: movie.id, media_type: 'movie', release_date: movie.release_date });
 
   const handleWatchlistToggle = () => {
     if (inWatchlist) {
@@ -117,6 +121,7 @@ export default function MovieDetailPage() {
 
             <div className="flex flex-wrap items-center gap-4 mt-4">
               <RatingRing rating={movie.vote_average} size="md" />
+              <ReleaseBadge releaseDate={movie.release_date} mediaType="movie" />
               {movie.release_date && (
                 <span className="flex items-center gap-1.5 text-sm text-[var(--color-text-muted)]">
                   <Calendar className="w-4 h-4" />
@@ -174,10 +179,12 @@ export default function MovieDetailPage() {
                 <Play className="w-4 h-4 mr-2" />
                 Stream
               </Button>
-              <Button variant="secondary" size="md" comingSoon featureFlag="downloadButton">
-                <Download className="w-4 h-4 mr-2" />
-                Download
-              </Button>
+              {released && (
+                <Button variant="secondary" size="md" comingSoon featureFlag="downloadButton">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+              )}
             </div>
 
             {/* Watch providers */}

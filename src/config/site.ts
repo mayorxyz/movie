@@ -18,6 +18,19 @@ export const site = {
   },
   settings: {
     minReleasesForFallback: 10,
+    timezone: 'Africa/Lagos',
+    recency: {
+      windowYears: 15,
+      latestDays: 90,
+      minVotesRecent: 10,
+    },
+    releaseFilter: {
+      extraPages: 2,
+    },
+    classics: {
+      minVotes: 100,
+      sortBy: 'vote_average.desc',
+    },
   },
   copy: {
     comingSoon: 'Coming soon',

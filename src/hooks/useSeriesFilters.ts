@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { useMemo } from 'react';
 import type { TvSeries } from '../types';
+import { today } from '../lib/releaseFilters';
 
 interface UseSeriesFiltersResult {
   season: number;
@@ -16,14 +17,13 @@ export function useSeriesFilters(series: TvSeries | undefined): UseSeriesFilters
   const defaultSeason = useMemo(() => {
     if (!series?.seasons || series.seasons.length === 0) return 1;
 
-    const today = new Date();
+    const todayStr = today();
     const validSeasons = series.seasons
       .filter(s => s.season_number > 0) // Exclude season 0 (Specials)
       .filter(s => s.episode_count > 0)
       .filter(s => {
         if (!s.air_date) return false;
-        const airDate = new Date(s.air_date);
-        return airDate <= today;
+        return s.air_date <= todayStr;
       })
       .sort((a, b) => b.season_number - a.season_number); // Sort descending
 

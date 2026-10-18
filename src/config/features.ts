@@ -13,6 +13,7 @@ export const features = {
   circles: false,
   appLinks: false,
   markWatched: true,
+  featuredFranchises: false,
 } as const;
 
 export type Features = typeof features;

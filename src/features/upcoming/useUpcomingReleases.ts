@@ -4,7 +4,8 @@ import type { UpcomingRelease, UpcomingDayGroup, UpcomingType } from './types';
 import { getFirstDayOfMonth, getLastDayOfMonth } from './utils';
 import { tmdb } from '../../config/tmdb';
 import { site } from '../../config/site';
-import { sharedLimiter } from '../../services/requestLimiter';
+import { tmdbRequest } from '../../services/tmdbClient';
+import { today } from '../../lib/releaseFilters';
 
 interface UseUpcomingReleasesOptions {
   month: string;
@@ -50,6 +51,7 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
       }
 
       // Filter out items without poster_path
+      // Upcoming is exempt from the released filter; use gte of today for the future view.
       const filteredReleases = allReleases.filter(release => release.poster_path !== null);
 
       // Sort by date then popularity
@@ -71,7 +73,10 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
     gcTime: tmdb.cache.upcomingCalendar,
     retry: (failureCount, error) => {
       // Retry on 429/5xx up to 2 times
-      if (error.message === 'RETRY') return failureCount < 2;
+      const status = (error as Error & { status?: number }).status;
+      if (error.message === 'RETRY' || status === 429 || (status !== undefined && status >= 500)) {
+        return failureCount < 2;
+      }
       return false;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
@@ -152,28 +157,18 @@ async function fetchMoviesForRegion(
   maxPages: number
 ): Promise<UpcomingRelease[]> {
   const allMovies: UpcomingRelease[] = [];
+  const todayStr = today();
+  // Future view: clamp the lower bound to today so past titles never leak in.
+  const gte = startDate < todayStr ? todayStr : startDate;
 
   for (let page = 1; page <= maxPages; page++) {
-    const result = await sharedLimiter.run(async () => {
-      const params = new URLSearchParams({
-        'region': region,
-        'with_release_type': '2|3|4', // Theatrical (limited), Theatrical, Digital
-        'release_date.gte': startDate,
-        'release_date.lte': endDate,
-        'sort_by': 'popularity.desc',
-        'page': page.toString(),
-      });
-
-      const response = await fetch(`${tmdb.baseUrl}${tmdb.endpoints.discover.movie}?${params}`);
-
-      if (!response.ok) {
-        if (response.status === 429 || response.status >= 500) {
-          throw new Error('RETRY');
-        }
-        throw new Error('FETCH_ERROR');
-      }
-
-      return response.json();
+    const result = await tmdbRequest<{ results: any[] }>(tmdb.endpoints.discover.movie, {
+      region,
+      with_release_type: '2|3|4',
+      'release_date.gte': gte,
+      'release_date.lte': endDate,
+      sort_by: 'popularity.desc',
+      page,
     });
 
     if (!result.results || result.results.length === 0) {
@@ -214,26 +209,15 @@ async function fetchTvForMonth(
   maxPages: number
 ): Promise<UpcomingRelease[]> {
   const allShows: UpcomingRelease[] = [];
+  const todayStr = today();
+  const gte = startDate < todayStr ? todayStr : startDate;
 
   for (let page = 1; page <= maxPages; page++) {
-    const result = await sharedLimiter.run(async () => {
-      const params = new URLSearchParams({
-        'first_air_date.gte': startDate,
-        'first_air_date.lte': endDate,
-        'sort_by': 'popularity.desc',
-        'page': page.toString(),
-      });
-
-      const response = await fetch(`${tmdb.baseUrl}${tmdb.endpoints.discover.tv}?${params}`);
-
-      if (!response.ok) {
-        if (response.status === 429 || response.status >= 500) {
-          throw new Error('RETRY');
-        }
-        throw new Error('FETCH_ERROR');
-      }
-
-      return response.json();
+    const result = await tmdbRequest<{ results: any[] }>(tmdb.endpoints.discover.tv, {
+      'first_air_date.gte': gte,
+      'first_air_date.lte': endDate,
+      sort_by: 'popularity.desc',
+      page,
     });
 
     if (!result.results || result.results.length === 0) {

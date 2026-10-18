@@ -3,27 +3,8 @@ import { useHomeFiltersStore } from '../store/homeFilters';
 import type { SectionConfig } from '../config/homeSections';
 import type { TmdbFilter } from '../types/filter';
 import { tmdbService } from '../services/tmdbClient';
-
-// Concurrency limiter for section fetches
-const concurrencyLimiter = {
-  maxConcurrent: 3,
-  active: 0,
-  queue: [] as Array<() => void>,
-  
-  async run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.active >= this.maxConcurrent) {
-      await new Promise<void>(resolve => this.queue.push(resolve));
-    }
-    this.active++;
-    try {
-      return await fn();
-    } finally {
-      this.active--;
-      const next = this.queue.shift();
-      if (next) next();
-    }
-  },
-};
+import { site } from '../config/site';
+import { filterReleased, shiftYears, today as getToday } from '../lib/releaseFilters';
 
 interface UseSectionFetcherOptions {
   section: SectionConfig;
@@ -32,96 +13,77 @@ interface UseSectionFetcherOptions {
   enabled?: boolean;
 }
 
+/**
+ * Recency gate for Classics: keep vote threshold from config, and drop any
+ * stragglers newer than windowYears at result level (mocks filtered identically).
+ */
+function applyRecencyGate(data: unknown[], mediaType: 'movie' | 'tv', section: SectionConfig): unknown[] {
+  if (section.id !== 'classics') return data;
+  const todayStr = getToday();
+  const cutoff = shiftYears(todayStr, -site.settings.recency.windowYears);
+  const gate = (filterReleased(data as never[], { requirePoster: false, todayStr }) as Record<string, unknown>[]).filter(
+    (item) => {
+      const date = (mediaType === 'tv' ? item.first_air_date : item.release_date) as string | undefined;
+      if (!date) return false;
+      return date <= cutoff && date <= todayStr;
+    },
+  );
+  return gate as unknown[];
+}
+
 export function useSectionFetcher({ section, activeTab, activeDropdown, enabled = true }: UseSectionFetcherOptions) {
-  const globalFilter = useHomeFiltersStore(state => state.getGlobalFilter());
-
-  // Build query key
-  const queryKey = [
-    'section',
-    section.id,
-    activeTab,
-    activeDropdown,
-    section.respectsGlobalFilter ? globalFilter : null,
-  ];
-
-  // Merge filters
-  const buildFilter = (): TmdbFilter => {
-    let filter: TmdbFilter = {};
-
-    // Start with section default params
-    if (section.fetcher.params) {
-      filter = { ...filter, ...section.fetcher.params };
-    }
-
-    // Apply tab filter if active
-    if (activeTab && section.tabs) {
-      const tab = section.tabs.find(t => t.id === activeTab);
-      if (tab?.filter) {
-        filter = { ...filter, ...tab.filter };
-      }
-    }
-
-    // Apply dropdown filter if active
-    if (activeDropdown !== undefined && section.dropdown) {
-      const option = section.dropdown.options.find(o => o.id === activeDropdown);
-      if (option?.filter) {
-        filter = { ...filter, ...option.filter };
-      }
-    }
-
-    // Apply global filter if section respects it
-    if (section.respectsGlobalFilter) {
-      filter = { ...filter, ...globalFilter };
-    }
-
-    return filter;
-  };
-
+  const globalFilter = useHomeFiltersStore((state) => state.getGlobalFilter());
+  const queryKey = ['section', section.id, activeTab ?? null, activeDropdown ?? null, section.respectsGlobalFilter ? globalFilter : null];
   const query = useQuery({
     queryKey,
     queryFn: async () => {
-      const filter = buildFilter();
-      
-      // Fetch data based on section type
-      let data: any[] = [];
-
+      let filter: TmdbFilter = { ...(section.fetcher.params ?? {}) };
+      if (activeTab && section.tabs) {
+        const tab = section.tabs.find((t) => t.id === activeTab);
+        if (tab?.filter) filter = { ...filter, ...tab.filter };
+      }
+      if (activeDropdown !== undefined && section.dropdown) {
+        const option = section.dropdown.options.find((o) => String(o.id) === String(activeDropdown));
+        if (option?.filter) filter = { ...filter, ...option.filter };
+      }
+      if (section.respectsGlobalFilter) filter = { ...filter, ...globalFilter };
+      // Recency for Latest: sort by release date desc, capped at today (query bound in service).
+      if (section.type === 'latest') {
+        filter = { ...filter, sort_by: 'primary_release_date.desc' };
+      }
+      let data: unknown[] = [];
       if (section.type === 'trending') {
-        const window = activeTab === 'day' ? 'day' : 'week';
-        data = await concurrencyLimiter.run(() => 
-          tmdbService.getTrending(window as 'day' | 'week')
-        );
+        data = await tmdbService.getTrending(activeTab === 'day' ? 'day' : 'week');
       } else if (section.type === 'latest') {
-        const mediaType = filter.mediaType || 'movie';
-        data = await concurrencyLimiter.run(() => 
-          tmdbService.getLatest(mediaType as 'movie' | 'tv', filter)
-        );
+        data = await tmdbService.getLatest(filter.mediaType === 'tv' ? 'tv' : 'movie', filter);
       } else if (section.type === 'topRated') {
-        const mediaType = filter.mediaType || 'movie';
-        data = await concurrencyLimiter.run(() => 
-          tmdbService.getTopRated(mediaType as 'movie' | 'tv', filter)
-        );
+        data = await tmdbService.getTopRated(filter.mediaType === 'tv' ? 'tv' : 'movie', filter);
       } else if (section.type === 'bestOf') {
-        data = await concurrencyLimiter.run(() => 
-          tmdbService.getBestOf(filter)
-        );
-      } else if (section.type === 'genre' || section.type === 'curated') {
-        const mediaType = filter.mediaType || 'movie';
-        data = await concurrencyLimiter.run(() => 
-          tmdbService.getDiscover(mediaType as 'movie' | 'tv', filter)
-        );
+        data = await tmdbService.getDiscoverMixed(filter);
+      } else if (section.type === 'genre') {
+        data = await tmdbService.getDiscover('movie', filter);
+      } else if (section.type === 'curated') {
+        if (filter.classics) {
+          data = await tmdbService.getClassics(filter.mediaType === 'tv' ? 'tv' : 'movie');
+          data = applyRecencyGate(data, filter.mediaType === 'tv' ? 'tv' : 'movie', section);
+        } else {
+          const personId = Number(filter.personId);
+          if (!Number.isFinite(personId)) return [];
+          data = await tmdbService.getPersonMovieCredits(personId, filter.personJob === 'Director' ? 'Director' : 'Cast');
+        }
       }
-
-      // Apply maxItems limit
-      if (section.maxItems && data.length > section.maxItems) {
-        data = data.slice(0, section.maxItems);
-      }
-
-      return data;
+      if (section.maxItems && data.length > section.maxItems) data = data.slice(0, section.maxItems);
+      return data as Record<string, unknown>[];
     },
     enabled: enabled && section.enabled !== false,
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 30 * 60 * 1000, // 30 minutes
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: (failureCount, error) => {
+      const status = (error as Error & { status?: number }).status;
+      if (status === 429) return failureCount < 1;
+      return failureCount < 2;
+    },
+    placeholderData: (previous) => previous,
   });
-
   return query;
 }

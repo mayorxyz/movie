@@ -9,9 +9,10 @@ import type { TvSeries } from '../../types';
 interface ActionRowProps {
   series: TvSeries;
   onTrailerClick: () => void;
+  released?: boolean;
 }
 
-export function ActionRow({ series, onTrailerClick }: ActionRowProps) {
+export function ActionRow({ series, onTrailerClick, released = true }: ActionRowProps) {
   const { addItem, removeItem, isInWatchlist } = useWatchlistStore();
   const inWatchlist = isInWatchlist(series.id, 'tv');
 
@@ -57,16 +58,20 @@ export function ActionRow({ series, onTrailerClick }: ActionRowProps) {
       </Button>
 
       {/* Stream button (disabled) */}
-      <Button variant="secondary" size="md" comingSoon featureFlag="streamButton">
-        <Play className="w-4 h-4 mr-2" />
-        {site.copy.watch}
-      </Button>
+      {released && (
+        <Button variant="secondary" size="md" comingSoon featureFlag="streamButton">
+          <Play className="w-4 h-4 mr-2" />
+          {site.copy.watch}
+        </Button>
+      )}
 
       {/* Download button (disabled) */}
-      <Button variant="secondary" size="md" comingSoon featureFlag="downloadButton">
-        <Download className="w-4 h-4 mr-2" />
-        {site.copy.download}
-      </Button>
+      {released && (
+        <Button variant="secondary" size="md" comingSoon featureFlag="downloadButton">
+          <Download className="w-4 h-4 mr-2" />
+          {site.copy.download}
+        </Button>
+      )}
     </div>
   );
 }

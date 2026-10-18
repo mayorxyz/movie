@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { tmdb } from '../config/tmdb';
 import type { Season } from '../types';
+import { tmdbRequest } from '../services/tmdbClient';
 
 interface UseSeasonOptions {
   seriesId: number;
@@ -16,22 +17,14 @@ export function useSeason({ seriesId, seasonNumber, seriesStatus, enabled = true
   return useQuery<Season>({
     queryKey: ['tv', seriesId, 'season', seasonNumber],
     queryFn: async () => {
-      const response = await fetch(
-        `${tmdb.baseUrl}${tmdb.endpoints.tvSeason(seriesId, seasonNumber)}?language=en-US`
-      );
-
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('NOT_FOUND');
-        }
-        if (response.status === 429 || response.status >= 500) {
-          throw new Error('RETRY');
-        }
+      try {
+        return await tmdbRequest<Season>(tmdb.endpoints.tvSeason(seriesId, seasonNumber));
+      } catch (error) {
+        const status = (error as Error & { status?: number }).status;
+        if (status === 404) throw new Error('NOT_FOUND');
+        if (status === 429 || (status !== undefined && status >= 500)) throw new Error('RETRY');
         throw new Error('FETCH_ERROR');
       }
-
-      const data = await response.json();
-      return data;
     },
     staleTime,
     gcTime: staleTime,

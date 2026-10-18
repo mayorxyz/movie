@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Play, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { RatingRing } from '../../components/ui/RatingRing';
 import { Button } from '../../components/ui/Button';
 import { EpisodeGuestStrip } from './EpisodeGuestStrip';
 import { site } from '../../config/site';
 import { features } from '../../config/features';
+import { today } from '../../lib/releaseFilters';
 import type { Episode } from '../../types';
 
 interface EpisodeRowProps {
@@ -15,8 +16,9 @@ export function EpisodeRow({ episode }: EpisodeRowProps) {
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [guestsExpanded, setGuestsExpanded] = useState(false);
 
-  const airDate = episode.air_date ? new Date(episode.air_date) : null;
-  const isUpcoming = airDate ? airDate > new Date() : false;
+  const todayStr = today();
+  // Unaired episodes stay visible but muted with "Airs {date}" (string compare, no Date shifting).
+  const isUpcoming = episode.air_date ? episode.air_date > todayStr : true;
   const title = episode.name || `${site.copy.episode} ${episode.episode_number}`;
   const isLongOverview = episode.overview && episode.overview.length > 100;
 
@@ -55,14 +57,9 @@ export function EpisodeRow({ episode }: EpisodeRowProps) {
               </div>
 
               <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-[var(--color-text-muted)]">
-                {airDate && (
+                {episode.air_date && (
                   <span>
-                    {isUpcoming ? `${site.copy.airs} ` : ''}
-                    {airDate.toLocaleDateString('en-US', { 
-                      year: 'numeric', 
-                      month: 'short', 
-                      day: 'numeric' 
-                    })}
+                    {isUpcoming ? `${site.copy.airs} ${episode.air_date}` : episode.air_date}
                   </span>
                 )}
                 {episode.runtime && !isUpcoming && (

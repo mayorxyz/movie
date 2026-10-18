@@ -2,6 +2,7 @@ import React from 'react';
 import { SegmentedTabs } from '../../components/ui/SegmentedTabs';
 import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { site } from '../../config/site';
+import { today } from '../../lib/releaseFilters';
 import type { Season } from '../../types';
 
 interface SeasonSelectorProps {
@@ -11,25 +12,33 @@ interface SeasonSelectorProps {
 }
 
 export function SeasonSelector({ seasons, activeSeason, onSeasonChange }: SeasonSelectorProps) {
+  const todayStr = today();
+  // Unreleased seasons stay only if they have episodes with dates, labeled as upcoming.
+  const visibleSeasons = seasons.filter((s) => {
+    if (s.air_date && s.air_date <= todayStr) return true;
+    return s.episode_count > 0 && !!s.air_date;
+  });
   // Filter out season 0, then add it back at the end if it exists
-  const regularSeasons = seasons.filter(s => s.season_number > 0);
-  const specialsSeason = seasons.find(s => s.season_number === 0);
+  const regularSeasons = visibleSeasons.filter(s => s.season_number > 0);
+  const specialsSeason = visibleSeasons.find(s => s.season_number === 0);
   
   const orderedSeasons = specialsSeason 
     ? [...regularSeasons, specialsSeason]
     : regularSeasons;
 
-  // Build tabs/dropdown options
+  // Build tabs/dropdown options (unreleased seasons labeled as upcoming)
   const tabs = orderedSeasons.map(season => ({
     id: season.season_number.toString(),
-    label: season.season_number === 0 
-      ? site.copy.specials 
-      : `${site.copy.season} ${season.season_number}`,
+    label: season.season_number === 0
+      ? site.copy.specials
+      : season.air_date && season.air_date > todayStr
+        ? `${site.copy.season} ${season.season_number} (Upcoming)`
+        : `${site.copy.season} ${season.season_number}`,
   }));
 
   const dropdownOptions = orderedSeasons.map(season => ({
     id: season.season_number,
-    label: `${season.season_number === 0 ? site.copy.specials : `${site.copy.season} ${season.season_number}`} (${season.episode_count} ${site.copy.episodes})`,
+    label: `${season.season_number === 0 ? site.copy.specials : `${site.copy.season} ${season.season_number}${season.air_date && season.air_date > todayStr ? ' (Upcoming)' : ''}`} (${season.episode_count} ${site.copy.episodes})`,
   }));
 
   const useTabs = orderedSeasons.length <= 6;

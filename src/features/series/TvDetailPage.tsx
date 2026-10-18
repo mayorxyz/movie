@@ -16,9 +16,12 @@ import { TrailerModal } from './TrailerModal';
 import { SeriesPageSkeleton } from './SeriesPageSkeleton';
 import { Rail } from '../../components/ui/Rail';
 import { PosterCard } from '../../components/ui/PosterCard';
+import { ReleaseBadge } from '../../components/ui/ReleaseBadge';
 import { NotFoundPage } from '../errors/ErrorPages';
 import { site } from '../../config/site';
+import { isReleased } from '../../lib/releaseFilters';
 import type { TvSeries } from '../../types';
+import { filterReleased } from '../../lib/releaseFilters';
 
 export default function TvDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -107,8 +110,10 @@ export default function TvDetailPage() {
       : b.episode_number - a.episode_number;
   });
 
-  // Get similar series
-  const similarSeries = (series as any)?.similar?.results || [];
+  // Get similar series (result-level: hide unreleased outside Upcoming; mocks filtered identically)
+  const similarSeries = filterReleased((series as any)?.similar?.results || [], { requirePoster: false }) as TvSeries[];
+  // Direct URLs for unreleased titles still open; badge + no Watch/Download state.
+  const released = isReleased({ id: series.id, media_type: 'tv', first_air_date: series.first_air_date });
 
   return (
     <motion.div
@@ -118,12 +123,17 @@ export default function TvDetailPage() {
     >
       {/* Hero */}
       <SeriesHero series={series} />
+      {!released && (
+        <div className="px-4 md:px-8 lg:px-12 max-w-7xl mx-auto mt-4">
+          <ReleaseBadge firstAirDate={series.first_air_date} mediaType="tv" />
+        </div>
+      )}
 
       {/* Content */}
       <div className="relative -mt-48 md:-mt-56 px-4 md:px-8 lg:px-12 max-w-7xl mx-auto">
         {/* Action Row */}
         <div className="mt-8">
-          <ActionRow series={series} onTrailerClick={() => setTrailerOpen(true)} />
+          <ActionRow series={series} onTrailerClick={() => setTrailerOpen(true)} released={released} />
         </div>
 
         {/* Next Episode Strip */}

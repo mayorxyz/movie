@@ -1,263 +1,381 @@
-import type { Movie, TvSeries, Person, PaginatedResponse, CreditsResponse, Video, WatchProvidersResult, Genre } from '../types';
+import type {
+  Movie,
+  TvSeries,
+  Person,
+  PaginatedResponse,
+  CreditsResponse,
+  Video,
+  WatchProvidersResult,
+  Genre,
+} from '../types';
+import type { TmdbFilter } from '../types/filter';
+import { tmdb } from '../config/tmdb';
+import { site } from '../config/site';
 import { sharedLimiter } from './requestLimiter';
+import { today as getToday, shiftDate, shiftYears, filterReleased, dedupeById, type ReleaseDatedItem } from '../lib/releaseFilters';
 
-// Proxy base URL from environment variable
-const PROXY_BASE_URL = import.meta.env.VITE_TMDB_PROXY_URL || '/api/tmdb';
+const PROXY_BASE_URL = (import.meta.env.VITE_TMDB_PROXY_URL || '/api/tmdb').replace(/\/$/, '');
 
-// Helper function to make requests through the proxy with shared limiter
-async function tmdbFetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
-  const url = new URL(`${window.location.origin}${PROXY_BASE_URL}${endpoint}`);
-  
-  if (params) {
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        url.searchParams.append(key, value);
-      }
-    });
+function normalizeImages<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeImages(item)) as T;
   }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => {
+        if (key.endsWith('_path') && typeof item === 'string' && item.startsWith('/')) {
+          const size = key === 'backdrop_path' ? tmdb.imageSizes.backdrop.md
+            : key === 'profile_path' ? tmdb.imageSizes.profile.md
+              : key === 'still_path' ? tmdb.imageSizes.still.md
+                : tmdb.imageSizes.poster.lg;
+          return [key, `${tmdb.imageBaseUrl}/${size}${item}`];
+        }
+        return [key, normalizeImages(item)];
+      }),
+    ) as T;
+  }
+
+  return value;
+}
+
+/** Makes a request through the server-side TMDB proxy; the API token never reaches the browser. */
+export async function tmdbRequest<T>(endpoint: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  const url = new URL(`${window.location.origin}${PROXY_BASE_URL}${endpoint}`);
+  url.searchParams.set('language', 'en-US');
+
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value !== undefined) url.searchParams.set(key, String(value));
+  });
 
   return sharedLimiter.run(async () => {
     const response = await fetch(url.toString());
-    
     if (!response.ok) {
-      const error = new Error(`TMDB API error: ${response.status}`);
-      (error as any).status = response.status;
-      (error as any).retryAfter = response.headers.get('Retry-After');
+      const error = new Error(`TMDB API error: ${response.status}`) as Error & { status?: number; retryAfter?: string | null };
+      error.status = response.status;
+      error.retryAfter = response.headers.get('Retry-After');
       throw error;
     }
-    
-    return response.json();
+
+    return normalizeImages(await response.json()) as T;
   });
 }
 
-// Mock data for demo purposes - in production, this would call TMDB API through a proxy
-const MOCK_MOVIES: Movie[] = [
-  { id: 1, title: 'The Last Horizon', original_title: 'The Last Horizon', overview: 'A lone astronaut discovers a signal from beyond the known universe, leading to a journey that challenges everything humanity believes about its place in the cosmos.', poster_path: '/mock-poster-1.jpg', backdrop_path: '/mock-backdrop-1.jpg', release_date: '2024-03-15', vote_average: 8.2, vote_count: 2847, genre_ids: [878, 18], popularity: 94.5, adult: false, runtime: 148, tagline: 'Beyond the stars, beyond ourselves.', genres: [{ id: 878, name: 'Science Fiction' }, { id: 18, name: 'Drama' }] },
-  { id: 2, title: 'Midnight in Marseille', original_title: 'Midnight in Marseille', overview: 'A jazz musician in 1960s France becomes entangled in a web of espionage when a mysterious woman walks into his club one rainy night.', poster_path: '/mock-poster-2.jpg', backdrop_path: '/mock-backdrop-2.jpg', release_date: '2024-01-22', vote_average: 7.8, vote_count: 1923, genre_ids: [53, 18], popularity: 87.2, adult: false, runtime: 132, tagline: 'Some melodies hide secrets.', genres: [{ id: 53, name: 'Thriller' }, { id: 18, name: 'Drama' }] },
-  { id: 3, title: 'Ember & Ash', original_title: 'Ember & Ash', overview: 'Two rival chefs are forced to collaborate on a once-in-a-lifetime restaurant opening, discovering that the secret ingredient was never in the kitchen.', poster_path: '/mock-poster-3.jpg', backdrop_path: '/mock-backdrop-3.jpg', release_date: '2024-06-10', vote_average: 7.5, vote_count: 1456, genre_ids: [35, 10749], popularity: 76.8, adult: false, runtime: 118, tagline: 'Fire makes everything better.', genres: [{ id: 35, name: 'Comedy' }, { id: 10749, name: 'Romance' }] },
-  { id: 4, title: 'The Cartographer', original_title: 'The Cartographer', overview: 'In the age of exploration, a mapmaker with an impossible gift must chart a continent that shouldn\'t exist before empires tear it apart.', poster_path: '/mock-poster-4.jpg', backdrop_path: '/mock-backdrop-4.jpg', release_date: '2024-04-05', vote_average: 8.5, vote_count: 3201, genre_ids: [12, 18, 36], popularity: 102.3, adult: false, runtime: 156, tagline: 'Every line tells a story.', genres: [{ id: 12, name: 'Adventure' }, { id: 18, name: 'Drama' }, { id: 36, name: 'History' }] },
-  { id: 5, title: 'Neon Requiem', original_title: 'Neon Requiem', overview: 'In a rain-soaked megacity, a retired enforcer is pulled back into the underworld when his daughter goes missing.', poster_path: '/mock-poster-5.jpg', backdrop_path: '/mock-backdrop-5.jpg', release_date: '2024-02-28', vote_average: 7.9, vote_count: 2156, genre_ids: [28, 53, 878], popularity: 91.7, adult: false, runtime: 127, tagline: 'The city never sleeps. Neither does justice.', genres: [{ id: 28, name: 'Action' }, { id: 53, name: 'Thriller' }, { id: 878, name: 'Science Fiction' }] },
-  { id: 6, title: 'Whispers in the Garden', original_title: 'Whispers in the Garden', overview: 'A botanist inherits her grandmother\'s estate and discovers a garden that blooms with flowers that can heal any ailment — but at a terrible cost.', poster_path: '/mock-poster-6.jpg', backdrop_path: '/mock-backdrop-6.jpg', release_date: '2024-05-18', vote_average: 7.3, vote_count: 987, genre_ids: [14, 18, 9648], popularity: 65.4, adult: false, runtime: 112, tagline: 'Nature remembers everything.', genres: [{ id: 14, name: 'Fantasy' }, { id: 18, name: 'Drama' }, { id: 9648, name: 'Mystery' }] },
-  { id: 7, title: 'Velocity', original_title: 'Velocity', overview: 'The world\'s fastest woman alive must outrun her past when a conspiracy threatens to erase everyone she\'s ever loved.', poster_path: '/mock-poster-7.jpg', backdrop_path: '/mock-backdrop-7.jpg', release_date: '2024-07-04', vote_average: 7.1, vote_count: 1678, genre_ids: [28, 53], popularity: 88.9, adult: false, runtime: 121, tagline: 'Speed is survival.', genres: [{ id: 28, name: 'Action' }, { id: 53, name: 'Thriller' }] },
-  { id: 8, title: 'The Last Letter', original_title: 'The Last Letter', overview: 'A World War II widow discovers an unsent letter that reveals a love story spanning decades and two continents.', poster_path: '/mock-poster-8.jpg', backdrop_path: '/mock-backdrop-8.jpg', release_date: '2024-02-14', vote_average: 8.0, vote_count: 2345, genre_ids: [10749, 18, 36], popularity: 72.1, adult: false, runtime: 138, tagline: 'Love finds a way through time.', genres: [{ id: 10749, name: 'Romance' }, { id: 18, name: 'Drama' }, { id: 36, name: 'History' }] },
-];
-
-const MOCK_TV: TvSeries[] = [
-  { id: 101, name: 'The Iron Crown', original_name: 'The Iron Crown', overview: 'In a fractured medieval kingdom, five noble houses vie for a throne built on blood and betrayal. Alliances shift like sand.', poster_path: '/mock-tv-1.jpg', backdrop_path: '/mock-tv-backdrop-1.jpg', first_air_date: '2024-01-10', vote_average: 8.7, vote_count: 4521, genre_ids: [18, 10759], popularity: 156.3, number_of_seasons: 3, number_of_episodes: 24, genres: [{ id: 18, name: 'Drama' }, { id: 10759, name: 'Action & Adventure' }], status: 'Returning Series', tagline: 'Every crown has a price.' },
-  { id: 102, name: 'Signal Lost', original_name: 'Signal Lost', overview: 'A deep-space research station goes dark. The rescue team that arrives finds something that defies every law of physics.', poster_path: '/mock-tv-2.jpg', backdrop_path: '/mock-tv-backdrop-2.jpg', first_air_date: '2024-03-20', vote_average: 8.4, vote_count: 3102, genre_ids: [18, 96, 10765], popularity: 134.7, number_of_seasons: 1, number_of_episodes: 8, genres: [{ id: 18, name: 'Drama' }, { id: 96, name: 'Mystery' }, { id: 10765, name: 'Sci-Fi & Fantasy' }], status: 'Returning Series', tagline: 'What you find in the dark changes you.' },
-  { id: 103, name: 'Kitchen Confidential', original_name: 'Kitchen Confidential', overview: 'Behind the pass of the world\'s most demanding restaurant, a brigade of chefs fights for Michelin stars, sanity, and their souls.', poster_path: '/mock-tv-3.jpg', backdrop_path: '/mock-tv-backdrop-3.jpg', first_air_date: '2023-09-15', vote_average: 8.1, vote_count: 2876, genre_ids: [18, 35], popularity: 98.5, number_of_seasons: 2, number_of_episodes: 16, genres: [{ id: 18, name: 'Drama' }, { id: 35, name: 'Comedy' }], status: 'Returning Series', tagline: 'Yes, chef.' },
-  { id: 104, name: 'The Archivist', original_name: 'The Archivist', overview: 'A quiet librarian discovers that the books in her collection are rewriting reality, one page at a time.', poster_path: '/mock-tv-4.jpg', backdrop_path: '/mock-tv-backdrop-4.jpg', first_air_date: '2024-05-01', vote_average: 8.3, vote_count: 1987, genre_ids: [96, 10765, 18], popularity: 112.4, number_of_seasons: 1, number_of_episodes: 10, genres: [{ id: 96, name: 'Mystery' }, { id: 10765, name: 'Sci-Fi & Fantasy' }, { id: 18, name: 'Drama' }], status: 'Returning Series', tagline: 'Some stories are alive.' },
-  { id: 105, name: 'Borderline', original_name: 'Borderline', overview: 'A border patrol agent uncovers a smuggling operation that reaches into the highest levels of government.', poster_path: '/mock-tv-5.jpg', backdrop_path: '/mock-tv-backdrop-5.jpg', first_air_date: '2024-02-08', vote_average: 7.8, vote_count: 2234, genre_ids: [80, 18], popularity: 89.2, number_of_seasons: 2, number_of_episodes: 16, genres: [{ id: 80, name: 'Crime' }, { id: 18, name: 'Drama' }], status: 'Returning Series', tagline: 'The line between law and justice is invisible.' },
-  { id: 106, name: 'Wildfire', original_name: 'Wildfire', overview: 'An elite team of smokejumpers battles the largest wildfires in American history while confronting their own inner demons.', poster_path: '/mock-tv-6.jpg', backdrop_path: '/mock-tv-backdrop-6.jpg', first_air_date: '2024-06-15', vote_average: 7.6, vote_count: 1567, genre_ids: [18, 10759], popularity: 78.3, number_of_seasons: 1, number_of_episodes: 8, genres: [{ id: 18, name: 'Drama' }, { id: 10759, name: 'Action & Adventure' }], status: 'Returning Series', tagline: 'Into the fire.' },
-];
-
-const MOCK_PEOPLE: Person[] = [
-  { id: 201, name: 'Elena Vasquez', biography: 'Elena Vasquez is an award-winning filmmaker known for her visually stunning narratives that explore the intersection of memory and identity. Born in Buenos Aires, she studied at the National Film School before moving to Los Angeles.', profile_path: '/mock-person-1.jpg', birthday: '1978-05-12', deathday: null, place_of_birth: 'Buenos Aires, Argentina', known_for_department: 'Directing', popularity: 45.6 },
-  { id: 202, name: 'James Chen', biography: 'James Chen is a versatile actor whose range spans from intense dramatic roles to witty comedies. A former stage actor, he transitioned to film in the early 2010s and has since become one of the most sought-after performers in Hollywood.', profile_path: '/mock-person-2.jpg', birthday: '1985-09-23', deathday: null, place_of_birth: 'Vancouver, Canada', known_for_department: 'Acting', popularity: 67.8 },
-  { id: 203, name: 'Amara Okafor', biography: 'Amara Okafor is a Nigerian-British screenwriter and producer whose work has been celebrated for its authentic portrayal of diaspora experiences. She won the BAFTA for Best Original Screenplay in 2023.', profile_path: '/mock-person-3.jpg', birthday: '1990-03-15', deathday: null, place_of_birth: 'London, United Kingdom', known_for_department: 'Writing', popularity: 34.2 },
-  { id: 204, name: 'Marcus Webb', biography: 'Marcus Webb is a cinematographer whose work has defined the visual language of modern thrillers. His signature use of natural light and shadow has earned him three Academy Award nominations.', profile_path: '/mock-person-4.jpg', birthday: '1975-11-08', deathday: null, place_of_birth: 'Chicago, Illinois, USA', known_for_department: 'Camera', popularity: 28.9 },
-];
-
-const MOCK_GENRES: Genre[] = [
-  { id: 28, name: 'Action' }, { id: 12, name: 'Adventure' }, { id: 16, name: 'Animation' },
-  { id: 35, name: 'Comedy' }, { id: 80, name: 'Crime' }, { id: 99, name: 'Documentary' },
-  { id: 18, name: 'Drama' }, { id: 10751, name: 'Family' }, { id: 14, name: 'Fantasy' },
-  { id: 36, name: 'History' }, { id: 27, name: 'Horror' }, { id: 10402, name: 'Music' },
-  { id: 9648, name: 'Mystery' }, { id: 10749, name: 'Romance' }, { id: 878, name: 'Science Fiction' },
-  { id: 53, name: 'Thriller' }, { id: 10752, name: 'War' }, { id: 37, name: 'Western' },
-];
-
-const TV_GENRES: Genre[] = [
-  { id: 10759, name: 'Action & Adventure' }, { id: 16, name: 'Animation' }, { id: 35, name: 'Comedy' },
-  { id: 80, name: 'Crime' }, { id: 99, name: 'Documentary' }, { id: 18, name: 'Drama' },
-  { id: 10751, name: 'Family' }, { id: 10762, name: 'Kids' }, { id: 96, name: 'Mystery' },
-  { id: 10763, name: 'News' }, { id: 10764, name: 'Reality' }, { id: 10765, name: 'Sci-Fi & Fantasy' },
-  { id: 10766, name: 'Soap' }, { id: 10767, name: 'Talk' }, { id: 10768, name: 'War & Politics' },
-  { id: 37, name: 'Western' },
-];
-
-// Simulate network delay
-function delay(ms: number = 300): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function toApiParams(filter: TmdbFilter = {}): Record<string, string | number | boolean | undefined> {
+  const { mediaType: _mediaType, personId: _personId, personJob: _personJob, collectionIds: _collectionIds, ...rest } = filter;
+  const out: Record<string, string | number | boolean | undefined> = {};
+  for (const [key, value] of Object.entries(rest)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      out[key] = value.join(',');
+    } else {
+      out[key] = value as string | number | boolean;
+    }
+  }
+  return out;
 }
 
-// Generate placeholder image URLs using picsum for demo
-function getPlaceholderImage(seed: string, width: number, height: number): string {
-  return `https://picsum.photos/seed/${seed}/${width}/${height}`;
+type TrendingItem = (Movie | TvSeries) & { media_type: 'movie' | 'tv' };
+
+/** Query-level upper bound so discover never returns unreleased titles. */
+function withReleasedBounds(
+  mediaType: 'movie' | 'tv',
+  params: Record<string, string | number | boolean | undefined>,
+  todayStr: string = getToday(),
+): Record<string, string | number | boolean | undefined> {
+  const out = { ...params };
+  if (mediaType === 'tv') {
+    if (out['first_air_date.lte'] === undefined) out['first_air_date.lte'] = todayStr;
+    if (typeof out['first_air_date.lte'] === 'string' && (out['first_air_date.lte'] as string) > todayStr) {
+      out['first_air_date.lte'] = todayStr;
+    }
+    delete out['release_date.lte'];
+    delete out['release_date.gte'];
+  } else {
+    if (out['release_date.lte'] === undefined) out['release_date.lte'] = todayStr;
+    if (typeof out['release_date.lte'] === 'string' && (out['release_date.lte'] as string) > todayStr) {
+      out['release_date.lte'] = todayStr;
+    }
+    delete out['first_air_date.lte'];
+    delete out['first_air_date.gte'];
+  }
+  return out;
 }
 
-function enrichMovie(movie: Movie, imageWidth = 500): Movie {
-  return {
-    ...movie,
-    poster_path: getPlaceholderImage(`movie-${movie.id}`, 500, 750),
-    backdrop_path: getPlaceholderImage(`backdrop-${movie.id}`, 1280, 720),
-  };
-}
-
-function enrichTv(tv: TvSeries): TvSeries {
-  return {
-    ...tv,
-    poster_path: getPlaceholderImage(`tv-${tv.id}`, 500, 750),
-    backdrop_path: getPlaceholderImage(`tv-backdrop-${tv.id}`, 1280, 720),
-  };
-}
-
-function enrichPerson(person: Person): Person {
-  return {
-    ...person,
-    profile_path: getPlaceholderImage(`person-${person.id}`, 300, 450),
-  };
+/**
+ * Paged discover with backfill: after result-level filtering a page may be
+ * short, so fetch up to `extraPages` more pages and dedupe by id.
+ */
+async function discoverPaged<T extends ReleaseDatedItem & { id: number }>(
+  endpoint: string,
+  baseParams: Record<string, string | number | boolean | undefined>,
+  options: { target?: number; extraPages?: number; todayStr?: string } = {},
+): Promise<T[]> {
+  const todayStr = options.todayStr ?? getToday();
+  const extraPages = options.extraPages ?? site.settings.releaseFilter.extraPages;
+  const target = options.target ?? 20;
+  const collected: T[] = [];
+  const seen = new Set<number>();
+  const maxPages = 1 + extraPages;
+  for (let page = 1; page <= maxPages; page++) {
+    const response = await tmdbRequest<PaginatedResponse<T>>(endpoint, { ...baseParams, page });
+    const filtered = filterReleased(response.results ?? [], { requirePoster: false, todayStr });
+    for (const item of filtered) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      collected.push(item as T);
+    }
+    if (collected.length >= target) break;
+    if (!response.results || response.results.length < 20 || page >= (response.total_pages ?? page)) break;
+  }
+  return dedupeById(collected);
 }
 
 export const tmdbService = {
-  async getTrending(window: 'day' | 'week' = 'week'): Promise<Movie[]> {
-    await delay(200);
-    const movies = window === 'day' ? [...MOCK_MOVIES].reverse() : [...MOCK_MOVIES];
-    return movies.map(m => enrichMovie(m));
+  async getTrending(window: 'day' | 'week' = 'week'): Promise<TrendingItem[]> {
+    const response = await tmdbRequest<PaginatedResponse<TrendingItem>>(`/trending/movie/${window}`);
+    // Trending has no date params: filter at result level (mock data filtered identically).
+    return filterReleased(response.results, { requirePoster: false });
   },
 
-  async getPopularMovies(page = 1): Promise<PaginatedResponse<Movie>> {
-    await delay(200);
-    const movies = [...MOCK_MOVIES, ...MOCK_MOVIES.map(m => ({ ...m, id: m.id + 100 }))].map(m => enrichMovie(m));
-    return { page, results: movies.slice((page - 1) * 8, page * 8), total_pages: 5, total_results: 40 };
+  getPopularMovies(page = 1): Promise<PaginatedResponse<Movie>> {
+    return tmdbRequest(tmdb.endpoints.popularMovies, { page });
   },
 
-  async getPopularTv(page = 1): Promise<PaginatedResponse<TvSeries>> {
-    await delay(200);
-    const tv = [...MOCK_TV, ...MOCK_TV.map(t => ({ ...t, id: t.id + 100 }))].map(t => enrichTv(t));
-    return { page, results: tv.slice((page - 1) * 8, page * 8), total_pages: 5, total_results: 40 };
+  getPopularTv(page = 1): Promise<PaginatedResponse<TvSeries>> {
+    return tmdbRequest(tmdb.endpoints.popularTv, { page });
   },
 
   async getTopRatedMovies(): Promise<Movie[]> {
-    await delay(200);
-    return [...MOCK_MOVIES].sort((a, b) => b.vote_average - a.vote_average).map(m => enrichMovie(m));
+    return filterReleased(
+      (await tmdbRequest<PaginatedResponse<Movie>>(tmdb.endpoints.topRatedMovies)).results,
+      { requirePoster: false },
+    );
   },
 
   async getTopRatedTv(): Promise<TvSeries[]> {
-    await delay(200);
-    return [...MOCK_TV].sort((a, b) => b.vote_average - a.vote_average).map(t => enrichTv(t));
+    return filterReleased(
+      (await tmdbRequest<PaginatedResponse<TvSeries>>(tmdb.endpoints.topRatedTv)).results,
+      { requirePoster: false },
+    );
   },
 
   async getUpcomingMovies(): Promise<Movie[]> {
-    await delay(200);
-    return [...MOCK_MOVIES].reverse().map(m => enrichMovie(m));
+    return (await tmdbRequest<PaginatedResponse<Movie>>(tmdb.endpoints.upcomingMovies)).results;
   },
 
-  async getMovieDetails(id: number): Promise<Movie> {
-    await delay(200);
-    const movie = MOCK_MOVIES.find(m => m.id === id) || MOCK_MOVIES[0];
-    return enrichMovie(movie);
+  getMovieDetails(id: number): Promise<Movie> {
+    return tmdbRequest(tmdb.endpoints.movieDetails(id));
   },
 
-  async getTvDetails(id: number): Promise<TvSeries> {
-    await delay(200);
-    const tv = MOCK_TV.find(t => t.id === id) || MOCK_TV[0];
-    return enrichTv(tv);
+  getTvDetails(id: number): Promise<TvSeries> {
+    return tmdbRequest(tmdb.endpoints.tvDetails(id));
   },
 
-  async getMovieCredits(_id: number): Promise<CreditsResponse> {
-    await delay(150);
-    return {
-      cast: MOCK_PEOPLE.map((p, i) => ({ ...enrichPerson(p), character: `Character ${i + 1}`, order: i })) as any,
-      crew: [],
-    };
+  getMovieCredits(id: number): Promise<CreditsResponse> {
+    return tmdbRequest(tmdb.endpoints.movieCredits(id));
   },
 
-  async getTvCredits(_id: number): Promise<CreditsResponse> {
-    await delay(150);
-    return {
-      cast: MOCK_PEOPLE.map((p, i) => ({ ...enrichPerson(p), character: `Character ${i + 1}`, order: i })) as any,
-      crew: [],
-    };
+  getTvCredits(id: number): Promise<CreditsResponse> {
+    return tmdbRequest(tmdb.endpoints.tvCredits(id));
   },
 
-  async getMovieVideos(_id: number): Promise<{ results: Video[] }> {
-    await delay(150);
-    return { results: [{ id: 'v1', key: 'dQw4w9WgXcQ', name: 'Official Trailer', site: 'YouTube', type: 'Trailer', official: true }] };
+  getMovieVideos(id: number): Promise<{ results: Video[] }> {
+    return tmdbRequest(tmdb.endpoints.movieVideos(id));
   },
 
-  async getTvVideos(_id: number): Promise<{ results: Video[] }> {
-    await delay(150);
-    return { results: [{ id: 'v2', key: 'dQw4w9WgXcQ', name: 'Season 1 Trailer', site: 'YouTube', type: 'Trailer', official: true }] };
+  getTvVideos(id: number): Promise<{ results: Video[] }> {
+    return tmdbRequest(tmdb.endpoints.tvVideos(id));
   },
 
-  async getMovieSimilar(_id: number): Promise<Movie[]> {
-    await delay(200);
-    return [...MOCK_MOVIES].sort(() => Math.random() - 0.5).slice(0, 6).map(m => enrichMovie(m));
+  async getMovieSimilar(id: number): Promise<Movie[]> {
+    return filterReleased(
+      (await tmdbRequest<PaginatedResponse<Movie>>(tmdb.endpoints.movieSimilar(id))).results,
+      { requirePoster: false },
+    );
   },
 
-  async getTvSimilar(_id: number): Promise<TvSeries[]> {
-    await delay(200);
-    return [...MOCK_TV].sort(() => Math.random() - 0.5).slice(0, 6).map(t => enrichTv(t));
+  async getTvSimilar(id: number): Promise<TvSeries[]> {
+    return filterReleased(
+      (await tmdbRequest<PaginatedResponse<TvSeries>>(tmdb.endpoints.tvSimilar(id))).results,
+      { requirePoster: false },
+    );
   },
 
-  async getMovieWatchProviders(_id: number): Promise<{ results: Record<string, WatchProvidersResult> }> {
-    await delay(100);
-    return { results: { US: { flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/netflix.png', display_priority: 1 }] } } };
+  getMovieWatchProviders(id: number): Promise<{ results: Record<string, WatchProvidersResult> }> {
+    return tmdbRequest(tmdb.endpoints.movieWatchProviders(id));
   },
 
-  async getTvWatchProviders(_id: number): Promise<{ results: Record<string, WatchProvidersResult> }> {
-    await delay(100);
-    return { results: { US: { flatrate: [{ provider_id: 337, provider_name: 'Disney+', logo_path: '/disney.png', display_priority: 1 }] } } };
+  getTvWatchProviders(id: number): Promise<{ results: Record<string, WatchProvidersResult> }> {
+    return tmdbRequest(tmdb.endpoints.tvWatchProviders(id));
   },
 
-  async getPersonDetails(id: number): Promise<Person> {
-    await delay(200);
-    const person = MOCK_PEOPLE.find(p => p.id === id) || MOCK_PEOPLE[0];
-    return enrichPerson(person);
+  getPersonDetails(id: number): Promise<Person> {
+    return tmdbRequest(tmdb.endpoints.personDetails(id));
   },
 
-  async getPersonCredits(_id: number): Promise<{ cast: (Movie | TvSeries)[] }> {
-    await delay(200);
-    return { cast: [...MOCK_MOVIES.slice(0, 4).map(m => enrichMovie(m)), ...MOCK_TV.slice(0, 4).map(t => enrichTv(t))] as any };
+  async getPersonCredits(id: number): Promise<{ cast: (Movie | TvSeries)[] }> {
+    const response = await tmdbRequest<{ cast: (Movie | TvSeries)[] }>(tmdb.endpoints.personCredits(id));
+    // Filmography / known-for: result-level filter, mocks filtered identically.
+    return { cast: filterReleased(response.cast, { requirePoster: false }) };
   },
 
-  async searchMulti(query: string): Promise<PaginatedResponse<any>> {
-    await delay(300);
-    if (!query) return { page: 1, results: [], total_pages: 0, total_results: 0 };
-    const q = query.toLowerCase();
-    const movies = MOCK_MOVIES.filter(m => m.title.toLowerCase().includes(q)).map(m => ({ ...enrichMovie(m), media_type: 'movie' }));
-    const tv = MOCK_TV.filter(t => t.name.toLowerCase().includes(q)).map(t => ({ ...enrichTv(t), media_type: 'tv' }));
-    const people = MOCK_PEOPLE.filter(p => p.name.toLowerCase().includes(q)).map(p => ({ ...enrichPerson(p), media_type: 'person' }));
-    return { page: 1, results: [...movies, ...tv, ...people], total_pages: 1, total_results: movies.length + tv.length + people.length };
+  async searchMulti(query: string): Promise<PaginatedResponse<Record<string, unknown>>> {
+    const response = await tmdbRequest<PaginatedResponse<Record<string, unknown>>>('/search/multi', { query });
+    const results = response.results.filter((r) => {
+      if (r.media_type === 'person') return true;
+      return filterReleased([r as unknown as never], { requirePoster: false }).length > 0;
+    });
+    return { ...response, results };
   },
 
   async getMovieGenres(): Promise<Genre[]> {
-    await delay(100);
-    return MOCK_GENRES;
+    return (await tmdbRequest<{ genres: Genre[] }>(tmdb.endpoints.genres.movie)).genres;
   },
 
   async getTvGenres(): Promise<Genre[]> {
-    await delay(100);
-    return TV_GENRES;
+    return (await tmdbRequest<{ genres: Genre[] }>(tmdb.endpoints.genres.tv)).genres;
   },
 
-  async getLatest(mediaType: 'movie' | 'tv', _filter: any): Promise<(Movie | TvSeries)[]> {
-    await delay(200);
-    if (mediaType === 'tv') {
-      return [...MOCK_TV].sort((a, b) => new Date(b.first_air_date).getTime() - new Date(a.first_air_date).getTime()).map(t => enrichTv(t));
+  async getLatest(mediaType: 'movie' | 'tv', filter: TmdbFilter): Promise<(Movie | TvSeries)[]> {
+    const todayStr = getToday();
+    const windowStart = shiftDate(todayStr, -site.settings.recency.latestDays);
+    const base = withReleasedBounds(
+      mediaType,
+      { sort_by: 'primary_release_date.desc', ...toApiParams(filter) },
+      todayStr,
+    );
+    if (mediaType === 'movie') {
+      if (base['release_date.gte'] === undefined) base['release_date.gte'] = shiftYears(todayStr, -site.settings.recency.windowYears);
+    } else {
+      if (base['first_air_date.gte'] === undefined) base['first_air_date.gte'] = windowStart;
     }
-    return [...MOCK_MOVIES].sort((a, b) => new Date(b.release_date).getTime() - new Date(a.release_date).getTime()).map(m => enrichMovie(m));
+    return discoverPaged<Movie | TvSeries>(tmdb.endpoints.discover[mediaType], base, { todayStr });
   },
 
-  async getTopRated(mediaType: 'movie' | 'tv', _filter: any): Promise<(Movie | TvSeries)[]> {
-    await delay(200);
-    if (mediaType === 'tv') {
-      return [...MOCK_TV].sort((a, b) => b.vote_average - a.vote_average).map(t => enrichTv(t));
+  async getTopRated(mediaType: 'movie' | 'tv', filter: TmdbFilter): Promise<(Movie | TvSeries)[]> {
+    const todayStr = getToday();
+    const base = withReleasedBounds(
+      mediaType,
+      { sort_by: 'vote_average.desc', 'vote_count.gte': 50, ...toApiParams(filter) },
+      todayStr,
+    );
+    return discoverPaged<Movie | TvSeries>(tmdb.endpoints.discover[mediaType], base, { todayStr });
+  },
+
+  async getBestOf(filter: TmdbFilter): Promise<TvSeries[]> {
+    const todayStr = getToday();
+    const base = withReleasedBounds(
+      'tv',
+      { sort_by: 'popularity.desc', ...toApiParams(filter) },
+      todayStr,
+    );
+    return discoverPaged<TvSeries>(tmdb.endpoints.discover.tv, base, { todayStr });
+  },
+
+  async getDiscover(mediaType: 'movie' | 'tv', filter: TmdbFilter): Promise<(Movie | TvSeries)[]> {
+    const todayStr = getToday();
+    const base = withReleasedBounds(
+      mediaType,
+      { sort_by: 'popularity.desc', ...toApiParams(filter) },
+      todayStr,
+    );
+    return discoverPaged<Movie | TvSeries>(tmdb.endpoints.discover[mediaType], base, { todayStr });
+  },
+
+  async getDiscoverMixed(filter: TmdbFilter): Promise<(Movie | TvSeries)[]> {
+    const { with_networks, with_companies, ...rest } = filter;
+    const base = { sort_by: 'popularity.desc', ...toApiParams(rest) };
+    const hasCompany = with_companies !== undefined;
+    // Networks are TV-only; companies are movie-oriented. Route accordingly.
+    if (with_networks !== undefined && !hasCompany) {
+      const response = await tmdbRequest<PaginatedResponse<TvSeries>>(
+        tmdb.endpoints.discover.tv,
+        { ...base, with_networks },
+      );
+      return response.results;
     }
-    return [...MOCK_MOVIES].sort((a, b) => b.vote_average - a.vote_average).map(m => enrichMovie(m));
+    const response = await tmdbRequest<PaginatedResponse<Movie | TvSeries>>(
+      tmdb.endpoints.discover.movie,
+      { ...base, ...(with_networks !== undefined ? { with_networks } : {}), ...(hasCompany ? { with_companies } : {}) },
+    );
+    return response.results;
   },
 
-  async getBestOf(_filter: any): Promise<TvSeries[]> {
-    await delay(200);
-    return [...MOCK_TV].sort((a, b) => b.popularity - a.popularity).map(t => enrichTv(t));
+  async getPersonMovieCredits(personId: number, job: 'Director' | 'Cast'): Promise<Movie[]> {
+    const response = await tmdbRequest<{ cast: Movie[]; crew: (Movie & { job?: string })[] }>(
+      tmdb.endpoints.personMovieCredits(personId),
+    );
+    const list = job === 'Director'
+      ? response.crew.filter((m) => m.job === 'Director')
+      : response.cast;
+    const seen = new Set<number>();
+    return filterReleased(list, { requirePoster: false })
+      .filter((m) => {
+        if (seen.has(m.id)) return false;
+        seen.add(m.id);
+        return true;
+      })
+      .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
   },
 
-  async getDiscover(mediaType: 'movie' | 'tv', _filter: any): Promise<(Movie | TvSeries)[]> {
-    await delay(200);
-    if (mediaType === 'tv') {
-      return [...MOCK_TV].map(t => enrichTv(t));
+  async getCollection(id: number): Promise<{
+    id: number;
+    name: string;
+    parts: (Movie & { release_date: string; vote_average: number; poster_path: string | null })[];
+  }> {
+    const collection = await tmdbRequest<{
+      id: number;
+      name: string;
+      parts: (Movie & { release_date: string; vote_average: number; poster_path: string | null })[];
+    }>(tmdb.endpoints.collection(id));
+    // Collections / franchises: result-level filter, mocks filtered identically.
+    return { ...collection, parts: filterReleased(collection.parts ?? [], { requirePoster: false }) };
+  },
+
+  async getClassics(mediaType: 'movie' | 'tv'): Promise<(Movie | TvSeries)[]> {
+    const todayStr = getToday();
+    const cutoff = shiftYears(todayStr, -site.settings.recency.windowYears);
+    const base = withReleasedBounds(
+      mediaType,
+      {
+        sort_by: site.settings.classics.sortBy,
+        'vote_count.gte': site.settings.classics.minVotes,
+      },
+      todayStr,
+    );
+    if (mediaType === 'movie') {
+      base['release_date.lte'] = cutoff < todayStr ? cutoff : todayStr;
+    } else {
+      base['first_air_date.lte'] = cutoff < todayStr ? cutoff : todayStr;
     }
-    return [...MOCK_MOVIES].map(m => enrichMovie(m));
+    return discoverPaged<Movie | TvSeries>(tmdb.endpoints.discover[mediaType], base, { todayStr });
+  },
+
+  /**
+   * Browse grid: discover with query-level released bounds + result-level
+   * filter/dedupe. Upcoming stays exempt (it uses its own release_date.gte hooks).
+   */
+  async getBrowsePage(
+    mediaType: 'movie' | 'tv',
+    options: { page?: number; genre?: number; sortBy?: string; minRating?: number } = {},
+  ): Promise<PaginatedResponse<Movie | TvSeries>> {
+    const todayStr = getToday();
+    const params = withReleasedBounds(
+      mediaType,
+      {
+        sort_by: options.sortBy ?? 'popularity.desc',
+        ...(options.genre ? { with_genres: options.genre } : {}),
+        ...(options.minRating ? { 'vote_average.gte': options.minRating } : {}),
+        page: options.page ?? 1,
+      },
+      todayStr,
+    );
+    const response = await tmdbRequest<PaginatedResponse<Movie | TvSeries>>(
+      tmdb.endpoints.discover[mediaType],
+      params,
+    );
+    const results = dedupeById(filterReleased(response.results ?? [], { requirePoster: false, todayStr }));
+    return { ...response, results };
   },
 };

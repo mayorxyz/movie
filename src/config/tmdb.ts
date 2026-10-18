@@ -51,6 +51,8 @@ export const tmdb = {
     tvWatchProviders: (id: number) => `/tv/${id}/watch/providers`,
     personDetails: (id: number) => `/person/${id}`,
     personCredits: (id: number) => `/person/${id}/combined_credits`,
+    personMovieCredits: (id: number) => `/person/${id}/movie_credits`,
+    collection: (id: number) => `/collection/${id}`,
     personImages: (id: number) => `/person/${id}/images`,
     searchMulti: '/search/multi',
     searchMovies: '/search/movie',

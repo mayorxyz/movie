@@ -24,7 +24,12 @@ export default function BrowsePage() {
 
   const { data, isLoading, isFetching } = useQuery<any>({
     queryKey: [`browse-${mediaType}`, page, genre, sortBy, minRating],
-    queryFn: () => mediaType === 'tv' ? tmdbService.getPopularTv(page) : tmdbService.getPopularMovies(page),
+    queryFn: () => tmdbService.getBrowsePage(mediaType, {
+      page,
+      genre: genre ? Number(genre) : undefined,
+      sortBy,
+      minRating: minRating ? Number(minRating) : undefined,
+    }),
     staleTime: 10 * 60 * 1000,
   });
 
