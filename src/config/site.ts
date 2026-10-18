@@ -4,6 +4,7 @@ export const site = {
   nav: [
     { label: 'Movies', path: '/browse/movies' },
     { label: 'TV Shows', path: '/browse/tv' },
+    { label: 'Upcoming', path: '/upcoming' },
     { label: 'Search', path: '/search' },
     { label: 'Watchlist', path: '/watchlist' },
   ],
@@ -40,5 +41,16 @@ export const site = {
     ascending: 'Ascending',
     descending: 'Descending',
     guestStars: 'Guest Stars',
+    upcoming: {
+      title: 'Upcoming Releases',
+      movies: 'Movies',
+      tv: 'TV Shows',
+      all: 'All',
+      noReleases: 'No releases scheduled for this month.',
+      previousMonth: 'Previous month',
+      nextMonth: 'Next month',
+      jumpToMonth: 'Jump to month',
+      dayReleases: 'releases',
+    },
   },
 } as const;

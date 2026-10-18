@@ -8,6 +8,7 @@ export const features = {
   reviews: true,
   personPages: true,
   upcomingRail: true,
+  upcomingCalendar: true,
   accounts: false,
   circles: false,
   appLinks: false,
