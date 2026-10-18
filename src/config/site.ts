@@ -16,6 +16,9 @@ export const site = {
     default: 'US',
     fallback: 'US',
   },
+  settings: {
+    minReleasesForFallback: 10,
+  },
   copy: {
     comingSoon: 'Coming soon',
     addToWatchlist: 'Add to Watchlist',
@@ -51,7 +54,6 @@ export const site = {
       nextMonth: 'Next month',
       jumpToMonth: 'Jump to month',
       dayReleases: 'releases',
-      minReleasesForFallback: 10,
     },
   },
 } as const;

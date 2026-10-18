@@ -1,9 +1,10 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { UpcomingRelease, UpcomingDayGroup, UpcomingType } from './types';
 import { getFirstDayOfMonth, getLastDayOfMonth } from './utils';
 import { tmdb } from '../../config/tmdb';
 import { site } from '../../config/site';
+import { sharedLimiter } from '../../services/requestLimiter';
 
 interface UseUpcomingReleasesOptions {
   month: string;
@@ -18,27 +19,6 @@ interface UseUpcomingReleasesResult {
   error: Error | null;
 }
 
-// Concurrency limiter - max 4 concurrent requests
-const concurrencyLimiter = {
-  maxConcurrent: 4,
-  active: 0,
-  queue: [] as Array<() => void>,
-  
-  async run<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.active >= this.maxConcurrent) {
-      await new Promise<void>(resolve => this.queue.push(resolve));
-    }
-    this.active++;
-    try {
-      return await fn();
-    } finally {
-      this.active--;
-      const next = this.queue.shift();
-      if (next) next();
-    }
-  },
-};
-
 /**
  * Fetch upcoming releases for a given month and type
  * Fetches up to 5 pages sorted by popularity
@@ -47,7 +27,7 @@ const concurrencyLimiter = {
 export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions): UseUpcomingReleasesResult {
   const primaryRegion = site.region.default;
   const fallbackRegion = site.region.fallback;
-  const minReleases = site.copy.upcoming.minReleasesForFallback || 10;
+  const minReleases = site.settings.minReleasesForFallback;
   const startDate = getFirstDayOfMonth(month);
   const endDate = getLastDayOfMonth(month);
 
@@ -174,7 +154,7 @@ async function fetchMoviesForRegion(
   const allMovies: UpcomingRelease[] = [];
 
   for (let page = 1; page <= maxPages; page++) {
-    const result = await concurrencyLimiter.run(async () => {
+    const result = await sharedLimiter.run(async () => {
       const params = new URLSearchParams({
         'region': region,
         'with_release_type': '2|3|4', // Theatrical (limited), Theatrical, Digital
@@ -236,7 +216,7 @@ async function fetchTvForMonth(
   const allShows: UpcomingRelease[] = [];
 
   for (let page = 1; page <= maxPages; page++) {
-    const result = await concurrencyLimiter.run(async () => {
+    const result = await sharedLimiter.run(async () => {
       const params = new URLSearchParams({
         'first_air_date.gte': startDate,
         'first_air_date.lte': endDate,
