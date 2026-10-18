@@ -27,6 +27,7 @@ export const tmdb = {
     seriesDetailsOngoing: 10 * 60 * 1000, // 10 min for ongoing shows
     seasonData: 60 * 60 * 1000, // 1 hour
     seasonDataOngoing: 10 * 60 * 1000, // 10 min for ongoing shows
+    upcomingCalendar: 60 * 60 * 1000, // 1 hour
   },
   endpoints: {
     trending: '/trending/all/week',
@@ -57,6 +58,10 @@ export const tmdb = {
     searchPerson: '/search/person',
     discoverMovies: '/discover/movie',
     discoverTv: '/discover/tv',
+    discover: {
+      movie: '/discover/movie',
+      tv: '/discover/tv',
+    },
     genres: {
       movie: '/genre/movie/list',
       tv: '/genre/tv/list',

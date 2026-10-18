@@ -1,4 +1,34 @@
 import type { Movie, TvSeries, Person, PaginatedResponse, CreditsResponse, Video, WatchProvidersResult, Genre } from '../types';
+import { sharedLimiter } from './requestLimiter';
+
+// Proxy base URL from environment variable
+const PROXY_BASE_URL = import.meta.env.VITE_TMDB_PROXY_URL || '/api/tmdb';
+
+// Helper function to make requests through the proxy with shared limiter
+async function tmdbFetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+  const url = new URL(`${window.location.origin}${PROXY_BASE_URL}${endpoint}`);
+  
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        url.searchParams.append(key, value);
+      }
+    });
+  }
+
+  return sharedLimiter.run(async () => {
+    const response = await fetch(url.toString());
+    
+    if (!response.ok) {
+      const error = new Error(`TMDB API error: ${response.status}`);
+      (error as any).status = response.status;
+      (error as any).retryAfter = response.headers.get('Retry-After');
+      throw error;
+    }
+    
+    return response.json();
+  });
+}
 
 // Mock data for demo purposes - in production, this would call TMDB API through a proxy
 const MOCK_MOVIES: Movie[] = [

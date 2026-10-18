@@ -14,6 +14,7 @@ const SearchPage = lazy(() => import('./features/search/SearchPage'));
 const PersonPage = lazy(() => import('./features/person/PersonPage'));
 const WatchlistPage = lazy(() => import('./features/watchlist/WatchlistPage'));
 const AboutPage = lazy(() => import('./features/about/AboutPage'));
+const UpcomingPage = lazy(() => import('./features/upcoming/UpcomingPage'));
 
 // Create Query Client
 const queryClient = new QueryClient({
@@ -93,6 +94,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageSkeleton />}>
             <WatchlistPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'upcoming',
+        element: (
+          <Suspense fallback={<PageSkeleton />}>
+            <UpcomingPage />
           </Suspense>
         ),
       },
