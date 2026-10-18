@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { UpcomingRelease, UpcomingDayGroup, UpcomingType } from './types';
 import { getFirstDayOfMonth, getLastDayOfMonth } from './utils';
@@ -18,30 +18,54 @@ interface UseUpcomingReleasesResult {
   error: Error | null;
 }
 
+// Concurrency limiter - max 4 concurrent requests
+const concurrencyLimiter = {
+  maxConcurrent: 4,
+  active: 0,
+  queue: [] as Array<() => void>,
+  
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.active >= this.maxConcurrent) {
+      await new Promise<void>(resolve => this.queue.push(resolve));
+    }
+    this.active++;
+    try {
+      return await fn();
+    } finally {
+      this.active--;
+      const next = this.queue.shift();
+      if (next) next();
+    }
+  },
+};
+
 /**
  * Fetch upcoming releases for a given month and type
  * Fetches up to 5 pages sorted by popularity
+ * Falls back to US region if primary region returns fewer than minReleasesForFallback
  */
 export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions): UseUpcomingReleasesResult {
-  const region = site.region.default;
+  const primaryRegion = site.region.default;
+  const fallbackRegion = site.region.fallback;
+  const minReleases = site.copy.upcoming.minReleasesForFallback || 10;
   const startDate = getFirstDayOfMonth(month);
   const endDate = getLastDayOfMonth(month);
 
   const query = useQuery({
-    queryKey: ['upcoming', month, type, region],
+    queryKey: ['upcoming', month, type],
     queryFn: async () => {
       const allReleases: UpcomingRelease[] = [];
       const maxPages = 5;
 
       // Fetch movies if type is 'movie' or 'all'
       if (type === 'movie' || type === 'all') {
-        const movieReleases = await fetchMoviesForMonth(startDate, endDate, region, maxPages);
+        const movieReleases = await fetchMoviesForMonth(startDate, endDate, primaryRegion, fallbackRegion, minReleases, maxPages);
         allReleases.push(...movieReleases);
       }
 
       // Fetch TV shows if type is 'tv' or 'all'
       if (type === 'tv' || type === 'all') {
-        const tvReleases = await fetchTvForMonth(startDate, endDate, region, maxPages);
+        const tvReleases = await fetchTvForMonth(startDate, endDate, maxPages);
         allReleases.push(...tvReleases);
       }
 
@@ -71,6 +95,8 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
       return false;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+    // On 429, use stale cache if available
+    placeholderData: (previousData) => previousData,
   });
 
   // Group releases by date
@@ -105,9 +131,41 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
 }
 
 /**
- * Fetch movies for a given date range
+ * Fetch movies for a given date range with region fallback
+ * Uses with_release_type=2|3|4 (Theatrical limited, Theatrical, Digital)
  */
 async function fetchMoviesForMonth(
+  startDate: string,
+  endDate: string,
+  primaryRegion: string,
+  fallbackRegion: string,
+  minReleases: number,
+  maxPages: number
+): Promise<UpcomingRelease[]> {
+  // Try primary region first
+  let allMovies = await fetchMoviesForRegion(startDate, endDate, primaryRegion, maxPages);
+  
+  // If fewer than minReleases, try fallback region
+  if (allMovies.length < minReleases && primaryRegion !== fallbackRegion) {
+    const fallbackMovies = await fetchMoviesForRegion(startDate, endDate, fallbackRegion, maxPages);
+    
+    // Merge results, avoiding duplicates by ID
+    const movieIds = new Set(allMovies.map(m => m.id));
+    fallbackMovies.forEach(movie => {
+      if (!movieIds.has(movie.id)) {
+        allMovies.push(movie);
+        movieIds.add(movie.id);
+      }
+    });
+  }
+
+  return allMovies;
+}
+
+/**
+ * Fetch movies for a specific region
+ */
+async function fetchMoviesForRegion(
   startDate: string,
   endDate: string,
   region: string,
@@ -116,31 +174,33 @@ async function fetchMoviesForMonth(
   const allMovies: UpcomingRelease[] = [];
 
   for (let page = 1; page <= maxPages; page++) {
-    const params = new URLSearchParams({
-      'region': region,
-      'with_release_type': '2|3', // Theatrical and Digital
-      'release_date.gte': startDate,
-      'release_date.lte': endDate,
-      'sort_by': 'popularity.desc',
-      'page': page.toString(),
+    const result = await concurrencyLimiter.run(async () => {
+      const params = new URLSearchParams({
+        'region': region,
+        'with_release_type': '2|3|4', // Theatrical (limited), Theatrical, Digital
+        'release_date.gte': startDate,
+        'release_date.lte': endDate,
+        'sort_by': 'popularity.desc',
+        'page': page.toString(),
+      });
+
+      const response = await fetch(`${tmdb.baseUrl}${tmdb.endpoints.discover.movie}?${params}`);
+
+      if (!response.ok) {
+        if (response.status === 429 || response.status >= 500) {
+          throw new Error('RETRY');
+        }
+        throw new Error('FETCH_ERROR');
+      }
+
+      return response.json();
     });
 
-    const response = await fetch(`${tmdb.baseUrl}${tmdb.endpoints.discover.movie}?${params}`);
-
-    if (!response.ok) {
-      if (response.status === 429 || response.status >= 500) {
-        throw new Error('RETRY');
-      }
-      throw new Error('FETCH_ERROR');
-    }
-
-    const data = await response.json();
-    
-    if (!data.results || data.results.length === 0) {
+    if (!result.results || result.results.length === 0) {
       break; // No more results
     }
 
-    const movies: UpcomingRelease[] = data.results.map((movie: any) => ({
+    const movies: UpcomingRelease[] = result.results.map((movie: any) => ({
       id: movie.id,
       media_type: 'movie' as const,
       title: movie.title,
@@ -156,7 +216,7 @@ async function fetchMoviesForMonth(
     allMovies.push(...movies);
 
     // If we got fewer results than expected, we've reached the end
-    if (data.results.length < 20) {
+    if (result.results.length < 20) {
       break;
     }
   }
@@ -166,39 +226,41 @@ async function fetchMoviesForMonth(
 
 /**
  * Fetch TV shows for a given date range
+ * Uses first_air_date.gte/lte (not with_first_air_date)
  */
 async function fetchTvForMonth(
   startDate: string,
   endDate: string,
-  region: string,
   maxPages: number
 ): Promise<UpcomingRelease[]> {
   const allShows: UpcomingRelease[] = [];
 
   for (let page = 1; page <= maxPages; page++) {
-    const params = new URLSearchParams({
-      'with_first_air_date.gte': startDate,
-      'with_first_air_date.lte': endDate,
-      'sort_by': 'popularity.desc',
-      'page': page.toString(),
+    const result = await concurrencyLimiter.run(async () => {
+      const params = new URLSearchParams({
+        'first_air_date.gte': startDate,
+        'first_air_date.lte': endDate,
+        'sort_by': 'popularity.desc',
+        'page': page.toString(),
+      });
+
+      const response = await fetch(`${tmdb.baseUrl}${tmdb.endpoints.discover.tv}?${params}`);
+
+      if (!response.ok) {
+        if (response.status === 429 || response.status >= 500) {
+          throw new Error('RETRY');
+        }
+        throw new Error('FETCH_ERROR');
+      }
+
+      return response.json();
     });
 
-    const response = await fetch(`${tmdb.baseUrl}${tmdb.endpoints.discover.tv}?${params}`);
-
-    if (!response.ok) {
-      if (response.status === 429 || response.status >= 500) {
-        throw new Error('RETRY');
-      }
-      throw new Error('FETCH_ERROR');
-    }
-
-    const data = await response.json();
-    
-    if (!data.results || data.results.length === 0) {
+    if (!result.results || result.results.length === 0) {
       break; // No more results
     }
 
-    const shows: UpcomingRelease[] = data.results.map((show: any) => ({
+    const shows: UpcomingRelease[] = result.results.map((show: any) => ({
       id: show.id,
       media_type: 'tv' as const,
       title: show.name,
@@ -214,7 +276,7 @@ async function fetchTvForMonth(
     allShows.push(...shows);
 
     // If we got fewer results than expected, we've reached the end
-    if (data.results.length < 20) {
+    if (result.results.length < 20) {
       break;
     }
   }

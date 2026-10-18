@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { Navigate } from 'react-router-dom';
 import { useUpcomingFilters } from './useUpcomingFilters';
 import { useUpcomingReleases } from './useUpcomingReleases';
 import { UpcomingHeader } from './UpcomingHeader';
@@ -10,9 +11,9 @@ import { UpcomingPageSkeleton } from './UpcomingPageSkeleton';
 import { features } from '../../config/features';
 
 export default function UpcomingPage() {
-  // If feature is disabled, don't render anything
+  // If feature is disabled, redirect to 404
   if (!features.upcomingCalendar) {
-    return null;
+    return <Navigate to="/404" replace />;
   }
 
   const { month, type, day, setMonth, setType, setDay, goToPreviousMonth, goToNextMonth } = useUpcomingFilters();

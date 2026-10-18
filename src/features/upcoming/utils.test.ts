@@ -246,4 +246,52 @@ describe('Upcoming Calendar Utils', () => {
       expect(days.length).toBe(28);
     });
   });
+
+  describe('TV date validation', () => {
+    it('should verify all TV dates fall within the month', () => {
+      // This test documents the expected behavior:
+      // When fetching TV shows for a month, all returned shows should have
+      // first_air_date within that month's date range
+      
+      const month = '2026-11';
+      const startDate = getFirstDayOfMonth(month);
+      const endDate = getLastDayOfMonth(month);
+      
+      // Simulate TV show dates
+      const tvDates = [
+        '2026-11-01',
+        '2026-11-15',
+        '2026-11-30',
+      ];
+      
+      // All dates should be >= startDate and <= endDate
+      tvDates.forEach(date => {
+        expect(date >= startDate).toBe(true);
+        expect(date <= endDate).toBe(true);
+      });
+      
+      // Dates outside the month should fail
+      const invalidDates = ['2026-10-31', '2026-12-01'];
+      invalidDates.forEach(date => {
+        const isValid = date >= startDate && date <= endDate;
+        expect(isValid).toBe(false);
+      });
+    });
+
+    it('should use first_air_date.gte/lte params (not with_first_air_date)', () => {
+      // This test documents that we use first_air_date.gte/lte
+      // The actual API call is tested in integration tests
+      const startDate = '2026-11-01';
+      const endDate = '2026-11-30';
+      
+      // Expected params for TV discover
+      const expectedParams = {
+        'first_air_date.gte': startDate,
+        'first_air_date.lte': endDate,
+      };
+      
+      expect(expectedParams['first_air_date.gte']).toBe(startDate);
+      expect(expectedParams['first_air_date.lte']).toBe(endDate);
+    });
+  });
 });

@@ -51,6 +51,7 @@ export const site = {
       nextMonth: 'Next month',
       jumpToMonth: 'Jump to month',
       dayReleases: 'releases',
+      minReleasesForFallback: 10,
     },
   },
 } as const;
