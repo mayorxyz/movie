@@ -1,5 +1,5 @@
 export const site = {
-  name: 'Cinevault',
+  name: 'Movievault',
   tagline: 'Your cinematic universe',
   nav: [
     { label: 'Movies', path: '/browse/movies' },
@@ -10,7 +10,7 @@ export const site = {
   ],
   footer: {
     tmdbAttribution: 'This product uses the TMDB API but is not endorsed or certified by TMDB.',
-    copyright: `© ${new Date().getFullYear()} ${'Cinevault'}. All rights reserved.`,
+    copyright: `© ${new Date().getFullYear()} ${'Movievault'}. All rights reserved.`,
   },
   region: {
     default: 'US',

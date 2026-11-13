@@ -11,6 +11,7 @@ export interface TmdbFilter {
   collectionIds?: number[];
   with_keywords?: number;
   with_original_language?: string;
+  with_origin_country?: string;
   sort_by?: string;
   'vote_count.gte'?: number;
   'release_date.gte'?: string;

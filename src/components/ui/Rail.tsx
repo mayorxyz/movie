@@ -6,6 +6,9 @@ interface RailProps {
   children: React.ReactNode;
 }
 
+const arrowBtn =
+  'hidden md:inline-flex absolute top-[38%] -translate-y-1/2 z-10 w-10 h-10 items-center justify-center rounded-full bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[0_8px_24px_rgba(0,0,0,0.5)] opacity-0 group-hover/rail:opacity-100 focus-visible:opacity-100 hover:bg-[var(--color-accent)] transition-[opacity,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]';
+
 export function Rail({ title, children }: RailProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -20,26 +23,26 @@ export function Rail({ title, children }: RailProps) {
 
   const scroll = (direction: 'left' | 'right') => {
     if (!scrollRef.current) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const amount = scrollRef.current.clientWidth * 0.75;
     scrollRef.current.scrollBy({
       left: direction === 'left' ? -amount : amount,
-      behavior: 'smooth',
+      behavior: reduced ? 'auto' : 'smooth',
     });
   };
 
   return (
     <section className="relative" aria-label={title}>
-      <h2 className="text-xl md:text-2xl font-[var(--font-display)] font-semibold mb-4 px-4 md:px-8 lg:px-12">
-        {title}
-      </h2>
+      <div className="flex min-w-0 items-center gap-3 md:gap-4 mb-5 px-4 md:px-8 lg:px-12">
+        <h2 className="min-w-0 truncate text-lg md:text-[20px] font-semibold text-[var(--color-text)]">{title}</h2>
+        <span className="w-7 h-2.5 rounded-full bg-[var(--color-accent)] shrink-0" />
+        <span className="flex-1 min-w-0 h-px bg-[var(--color-border-subtle)]" />
+      </div>
+
       <div className="relative group/rail">
         {canScrollLeft && (
-          <button
-            onClick={() => scroll('left')}
-            className="absolute left-0 top-0 bottom-8 z-10 w-12 bg-gradient-to-r from-[var(--color-base)] to-transparent flex items-center justify-center opacity-0 group-hover/rail:opacity-100 transition-opacity"
-            aria-label="Scroll left"
-          >
-            <ChevronLeft className="w-6 h-6 text-[var(--color-text)]" />
+          <button onClick={() => scroll('left')} className={`${arrowBtn} left-4`} aria-label="Scroll left">
+            <ChevronLeft className="w-5 h-5" strokeWidth={1.75} />
           </button>
         )}
         <div
@@ -50,13 +53,12 @@ export function Rail({ title, children }: RailProps) {
           {children}
         </div>
         {canScrollRight && (
-          <button
-            onClick={() => scroll('right')}
-            className="absolute right-0 top-0 bottom-8 z-10 w-12 bg-gradient-to-l from-[var(--color-base)] to-transparent flex items-center justify-center opacity-0 group-hover/rail:opacity-100 transition-opacity"
-            aria-label="Scroll right"
-          >
-            <ChevronRight className="w-6 h-6 text-[var(--color-text)]" />
-          </button>
+          <>
+            <div className="hidden md:block pointer-events-none absolute right-0 top-0 bottom-2 w-6 bg-gradient-to-l from-[var(--color-bg)] to-transparent" />
+            <button onClick={() => scroll('right')} className={`${arrowBtn} right-4`} aria-label="Scroll right">
+              <ChevronRight className="w-5 h-5" strokeWidth={1.75} />
+            </button>
+          </>
         )}
       </div>
     </section>

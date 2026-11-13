@@ -1,6 +1,22 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const STORAGE_KEY = 'movievault-watched';
+const LEGACY_KEY = 'cinevault-watched';
+
+// One-time migration so existing watched history survives the rebrand.
+try {
+  if (!localStorage.getItem(STORAGE_KEY)) {
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      localStorage.setItem(STORAGE_KEY, legacy);
+      localStorage.removeItem(LEGACY_KEY);
+    }
+  }
+} catch {
+  /* storage unavailable */
+}
+
 interface WatchedState {
   watchedIds: string[];
   markWatched: (id: number, mediaType: 'movie' | 'tv') => void;
@@ -29,7 +45,7 @@ export const useWatchedStore = create<WatchedState>()(
       },
     }),
     {
-      name: 'cinevault-watched',
+      name: STORAGE_KEY,
     }
   )
 );

@@ -1,7 +1,7 @@
 import type { UpcomingFilters } from './types';
 
 /**
- * Get current month in YYYY-MM format
+ * Get current month in YYYY-MM format (local time)
  */
 export function getCurrentMonth(): string {
   const now = new Date();
@@ -34,26 +34,15 @@ export function getFirstDayOfMonth(month: string): string {
 
 /**
  * Get last day of month in YYYY-MM-DD format
+ * Uses native Date logic to perfectly handle leap years and varying month lengths.
  */
 export function getLastDayOfMonth(month: string): string {
   const parsed = parseMonth(month);
   if (!parsed) return `${month}-31`;
   
-  const { year, month: monthNum } = parsed;
-  
-  // Months with 31 days
-  if ([1, 3, 5, 7, 8, 10, 12].includes(monthNum)) {
-    return `${month}-31`;
-  }
-  
-  // Months with 30 days
-  if ([4, 6, 9, 11].includes(monthNum)) {
-    return `${month}-30`;
-  }
-  
-  // February - check for leap year
-  const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
-  return `${month}-${isLeapYear ? '29' : '28'}`;
+  // new Date(year, month, 0) gets the last day of the previous month
+  const lastDate = new Date(parsed.year, parsed.month, 0).getDate();
+  return `${month}-${String(lastDate).padStart(2, '0')}`;
 }
 
 /**
@@ -100,11 +89,8 @@ export function isMonthInRange(month: string): boolean {
   const currentMonth = now.getMonth() + 1;
   
   const { year, month: monthNum } = parsed;
-  
-  // Calculate months difference
   const monthsDiff = (year - currentYear) * 12 + (monthNum - currentMonth);
   
-  // Allow -6 to +24 months
   return monthsDiff >= -6 && monthsDiff <= 24;
 }
 
@@ -115,14 +101,13 @@ export function formatMonthDisplay(month: string): string {
   const parsed = parseMonth(month);
   if (!parsed) return month;
   
-  const { year, month: monthNum } = parsed;
-  const date = new Date(year, monthNum - 1, 1);
-  
+  const date = new Date(parsed.year, parsed.month - 1, 1);
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
 }
 
 /**
  * Format date for display using region settings
+ * Appends local time to prevent UTC timezone shift from changing the displayed day.
  */
 export function formatDateDisplay(dateStr: string, region: string = 'US'): string {
   const date = new Date(dateStr + 'T00:00:00');
@@ -143,19 +128,16 @@ export function parseUpcomingFilters(searchParams: URLSearchParams): UpcomingFil
   const typeParam = searchParams.get('type');
   const dayParam = searchParams.get('day');
   
-  // Validate month
   let month = getCurrentMonth();
   if (monthParam && parseMonth(monthParam) && isMonthInRange(monthParam)) {
     month = monthParam;
   }
   
-  // Validate type
   let type: UpcomingFilters['type'] = 'all';
   if (typeParam === 'movie' || typeParam === 'tv' || typeParam === 'all') {
     type = typeParam;
   }
   
-  // Validate day
   let day: string | undefined;
   if (dayParam && dayParam.startsWith(month) && dayParam.length === 10) {
     day = dayParam;
@@ -169,7 +151,6 @@ export function parseUpcomingFilters(searchParams: URLSearchParams): UpcomingFil
  */
 export function filtersToSearchParams(filters: UpcomingFilters): URLSearchParams {
   const params = new URLSearchParams();
-  
   params.set('month', filters.month);
   params.set('type', filters.type);
   
@@ -182,16 +163,17 @@ export function filtersToSearchParams(filters: UpcomingFilters): URLSearchParams
 
 /**
  * Check if a date is in the past (compared to today)
+ * Uses 'en-CA' locale which reliably outputs YYYY-MM-DD in local time, 
+ * avoiding manual padding and UTC midnight shift bugs.
  */
 export function isDateInPast(dateStr: string): boolean {
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  
+  const todayStr = new Date().toLocaleDateString('en-CA');
   return dateStr < todayStr;
 }
 
 /**
  * Get day of week for a date (0 = Sunday, 6 = Saturday)
+ * Appends local time to prevent UTC timezone shift from changing the day.
  */
 export function getDayOfWeek(dateStr: string): number {
   const date = new Date(dateStr + 'T00:00:00');
@@ -202,19 +184,14 @@ export function getDayOfWeek(dateStr: string): number {
  * Get all days in a month as YYYY-MM-DD strings
  */
 export function getDaysInMonth(month: string): string[] {
-  const firstDay = getFirstDayOfMonth(month);
-  const lastDay = getLastDayOfMonth(month);
+  const parsed = parseMonth(month);
+  if (!parsed) return [];
   
+  const daysInMonth = new Date(parsed.year, parsed.month, 0).getDate();
   const days: string[] = [];
-  let current = firstDay;
   
-  while (current <= lastDay) {
-    days.push(current);
-    
-    // Increment day
-    const dayNum = parseInt(current.substring(8, 10), 10);
-    const nextDay = dayNum + 1;
-    current = `${month}-${String(nextDay).padStart(2, '0')}`;
+  for (let i = 1; i <= daysInMonth; i++) {
+    days.push(`${month}-${String(i).padStart(2, '0')}`);
   }
   
   return days;

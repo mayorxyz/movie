@@ -1,7 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Bookmark, BookmarkCheck, Eye, Play, Download } from 'lucide-react';
-import { RatingRing } from './RatingRing';
+import { Bookmark, BookmarkCheck, Eye, Star } from 'lucide-react';
 import { isFeatureEnabled } from '../../config/features';
 import { useWatchlistStore } from '../../store/watchlist';
 import { useWatchedStore } from '../../store/watched';
@@ -16,7 +15,21 @@ interface PosterCardProps {
   statusLabel?: string;
 }
 
-export function PosterCard({ id, title, posterPath, voteAverage, releaseDate, mediaType, statusLabel }: PosterCardProps) {
+const circleBtn =
+  'w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 inline-flex items-center justify-center rounded-full bg-black/60 border border-white/15 text-white backdrop-blur-sm hover:bg-black/80 active:scale-95 transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]';
+
+const pill =
+  'inline-flex items-center gap-1 h-5 md:h-6 px-1.5 sm:px-2 md:px-2.5 rounded-full text-[10px] sm:text-[11px] md:text-[12px] font-medium tabular-nums bg-[var(--color-surface)] border border-[var(--color-border-subtle)] text-[var(--color-text-muted)]';
+
+export function PosterCard({
+  id,
+  title,
+  posterPath,
+  voteAverage,
+  releaseDate,
+  mediaType,
+  statusLabel,
+}: PosterCardProps) {
   const path = mediaType === 'movie' ? `/movie/${id}` : `/tv/${id}`;
   const year = releaseDate ? new Date(releaseDate).getFullYear() : '';
 
@@ -57,99 +70,69 @@ export function PosterCard({ id, title, posterPath, voteAverage, releaseDate, me
   return (
     <Link
       to={path}
-      className="poster-card block group relative"
+      className="group block w-full min-w-0 rounded-[14px] md:rounded-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]"
       aria-label={`${title}${year ? `, ${year}` : ''}`}
     >
-      <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-[var(--color-surface)]">
+      <div className="relative aspect-[2/3] w-full rounded-[14px] md:rounded-[18px] overflow-hidden bg-[var(--color-surface)]">
         {posterPath ? (
           <img
             src={posterPath}
             alt={title}
-            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             loading="lazy"
+            className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
-            <span className="text-sm">No Image</span>
+          <div className="w-full h-full flex items-center justify-center text-[var(--color-text-faint)]">
+            <span className="text-[11px] md:text-[12px]">No image</span>
           </div>
         )}
 
-        {/* Status label */}
-        {statusLabel && (
-          <div className="absolute top-2 left-2">
-            <span className="px-2 py-1 text-xs font-medium rounded bg-black/60 text-[var(--color-text)]">
-              {statusLabel}
-            </span>
-          </div>
-        )}
-
-        {/* Rating */}
-        <div className="absolute top-2 right-2">
-          <RatingRing rating={voteAverage} size="sm" />
-        </div>
-
-        {/* Hover overlay with action buttons */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200 flex items-end justify-center pb-4">
-          <div className="flex gap-2">
-            {/* Bookmark */}
-            <button
-              onClick={handleBookmarkToggle}
-              className={`p-2 rounded-full transition-colors ${
-                inWatchlist
-                  ? 'bg-[var(--color-accent)] text-[var(--color-base)]'
-                  : 'bg-black/60 text-[var(--color-text)] hover:bg-black/80'
-              }`}
-              aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-            >
-              {inWatchlist ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
-            </button>
-
-            {/* Mark watched */}
-            {isFeatureEnabled('markWatched') && (
-              <button
-                onClick={handleWatchedToggle}
-                className={`p-2 rounded-full transition-colors ${
-                  watched
-                    ? 'bg-[var(--color-success)] text-white'
-                    : 'bg-black/60 text-[var(--color-text)] hover:bg-black/80'
-                }`}
-                aria-label={watched ? 'Mark as unwatched' : 'Mark as watched'}
-              >
-                <Eye className="w-4 h-4" />
-              </button>
+        {/* Actions, top-right */}
+        <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 md:top-2.5 md:right-2.5 flex flex-col gap-1 sm:gap-1.5">
+          <button
+            type="button"
+            onClick={handleBookmarkToggle}
+            className={circleBtn}
+            aria-label={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+            aria-pressed={inWatchlist}
+          >
+            {inWatchlist ? (
+              <BookmarkCheck className="w-3.5 h-3.5 md:w-4 md:h-4 text-[var(--color-accent)]" strokeWidth={1.75} />
+            ) : (
+              <Bookmark className="w-3.5 h-3.5 md:w-4 md:h-4" strokeWidth={1.75} />
             )}
-
-            {/* Play (disabled) */}
+          </button>
+          {isFeatureEnabled('markWatched') && (
             <button
-              disabled
-              className="p-2 rounded-full bg-black/60 text-[var(--color-text-muted)] cursor-not-allowed opacity-50 tooltip-coming-soon"
-              aria-label="Play (coming soon)"
+              type="button"
+              onClick={handleWatchedToggle}
+              className={circleBtn}
+              aria-label={watched ? 'Mark as unwatched' : 'Mark as watched'}
+              aria-pressed={watched}
             >
-              <Play className="w-4 h-4" />
+              <Eye
+                className={`w-3.5 h-3.5 md:w-4 md:h-4 ${watched ? 'text-[var(--color-accent)]' : ''}`}
+                strokeWidth={1.75}
+              />
             </button>
-
-            {/* Download (disabled) */}
-            {isFeatureEnabled('downloadButton') && (
-              <button
-                disabled
-                className="p-2 rounded-full bg-black/60 text-[var(--color-text-muted)] cursor-not-allowed opacity-50 tooltip-coming-soon"
-                aria-label="Download (coming soon)"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Title and year */}
-      <div className="mt-2 px-1">
-        <h3 className="text-sm font-medium text-[var(--color-text)] truncate group-hover:text-[var(--color-accent)] transition-colors">
+      {/* Caption */}
+      <div className="mt-2 px-0.5 min-w-0">
+        <h3 className="text-[13px] md:text-[14px] font-semibold leading-snug text-[var(--color-text)] truncate">
           {title}
         </h3>
-        <div className="flex items-center gap-2 mt-0.5">
-          {year && <p className="text-xs text-[var(--color-text-muted)]">{year}</p>}
-          {watched && <span className="text-xs text-[var(--color-success)]">✓ Watched</span>}
+        <div className="flex items-center gap-1 sm:gap-1.5 mt-1 min-w-0 overflow-hidden">
+          {voteAverage > 0 && (
+            <span className={`${pill} shrink-0`}>
+              <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-[var(--color-rating)] text-[var(--color-rating)]" strokeWidth={0} />
+              <span className="text-[var(--color-text)]">{voteAverage.toFixed(1)}</span>
+            </span>
+          )}
+          {year && <span className={`${pill} shrink-0`}>{year}</span>}
+          {statusLabel && <span className={`${pill} min-w-0 truncate`}>{statusLabel}</span>}
         </div>
       </div>
     </Link>

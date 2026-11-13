@@ -10,20 +10,23 @@ const HomePage = lazy(() => import('./features/home/HomePage'));
 const MovieDetailPage = lazy(() => import('./features/movie/MovieDetailPage'));
 const TvDetailPage = lazy(() => import('./features/series/TvDetailPage'));
 const BrowsePage = lazy(() => import('./features/browse/BrowsePage'));
-const SearchPage = lazy(() => import('./features/search/SearchPage'));
 const PersonPage = lazy(() => import('./features/person/PersonPage'));
 const WatchlistPage = lazy(() => import('./features/watchlist/WatchlistPage'));
 const AboutPage = lazy(() => import('./features/about/AboutPage'));
 const UpcomingPage = lazy(() => import('./features/upcoming/UpcomingPage'));
+const SectionPage = lazy(() => import('./features/sections/SectionPage'));
 
 // Create Query Client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 10 * 60 * 1000, // 10 minutes
+      // Content always comes live from the TMDB proxy, never from a baked-in build.
+      staleTime: 0,
       gcTime: 6 * 30 * 24 * 60 * 60 * 1000, // 6 months
       retry: 2,
-      refetchOnWindowFocus: false,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: 'always',
+      refetchOnReconnect: 'always',
     },
   },
 });
@@ -75,11 +78,7 @@ const router = createBrowserRouter([
       },
       {
         path: 'search',
-        element: (
-          <Suspense fallback={<PageSkeleton />}>
-            <SearchPage />
-          </Suspense>
-        ),
+        element: <Navigate to="/" replace />,
       },
       {
         path: 'person/:id',
@@ -94,6 +93,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageSkeleton />}>
             <WatchlistPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'section/:sectionId',
+        element: (
+          <Suspense fallback={<PageSkeleton />}>
+            <SectionPage />
           </Suspense>
         ),
       },

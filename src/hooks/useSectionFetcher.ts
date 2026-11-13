@@ -6,22 +6,31 @@ import { tmdbService } from '../services/tmdbClient';
 import { site } from '../config/site';
 import { filterReleased, shiftYears, today as getToday } from '../lib/releaseFilters';
 
+/** Items per page on the full-list section page. */
+const PAGE_SIZE = 24;
+
 interface UseSectionFetcherOptions {
   section: SectionConfig;
   activeTab?: string;
   activeDropdown?: string | number;
   enabled?: boolean;
+  /** Page number (1-based). Supplying it enables paginated mode for the section page. */
+  page?: number;
+}
+
+export interface SectionFetchResult {
+  items: Record<string, unknown>[];
+  totalPages: number;
 }
 
 /**
- * Recency gate for Classics: keep vote threshold from config, and drop any
- * stragglers newer than windowYears at result level (mocks filtered identically).
+ * Recency gate for Classics: drop anything newer than windowYears or unposted.
  */
 function applyRecencyGate(data: unknown[], mediaType: 'movie' | 'tv', section: SectionConfig): unknown[] {
   if (section.id !== 'classics') return data;
   const todayStr = getToday();
   const cutoff = shiftYears(todayStr, -site.settings.recency.windowYears);
-  const gate = (filterReleased(data as never[], { requirePoster: false, todayStr }) as Record<string, unknown>[]).filter(
+  const gate = (filterReleased(data as never[], { requirePoster: true, todayStr }) as Record<string, unknown>[]).filter(
     (item) => {
       const date = (mediaType === 'tv' ? item.first_air_date : item.release_date) as string | undefined;
       if (!date) return false;
@@ -31,10 +40,29 @@ function applyRecencyGate(data: unknown[], mediaType: 'movie' | 'tv', section: S
   return gate as unknown[];
 }
 
-export function useSectionFetcher({ section, activeTab, activeDropdown, enabled = true }: UseSectionFetcherOptions) {
+/** Drops items already shown earlier in the same row (same id + media type). */
+function uniqueItems(data: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  return data.filter((item) => {
+    const key = `${String(item.media_type ?? '')}-${String(item.id)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function useSectionFetcher({ section, activeTab, activeDropdown, enabled = true, page }: UseSectionFetcherOptions) {
   const globalFilter = useHomeFiltersStore((state) => state.getGlobalFilter());
-  const queryKey = ['section', section.id, activeTab ?? null, activeDropdown ?? null, section.respectsGlobalFilter ? globalFilter : null];
-  const query = useQuery({
+  const paginated = page !== undefined;
+  const queryKey = [
+    'section',
+    section.id,
+    activeTab ?? null,
+    activeDropdown ?? null,
+    section.respectsGlobalFilter ? globalFilter : null,
+    paginated ? page : null,
+  ];
+  const query = useQuery<SectionFetchResult>({
     queryKey,
     queryFn: async () => {
       let filter: TmdbFilter = { ...(section.fetcher.params ?? {}) };
@@ -47,33 +75,62 @@ export function useSectionFetcher({ section, activeTab, activeDropdown, enabled 
         if (option?.filter) filter = { ...filter, ...option.filter };
       }
       if (section.respectsGlobalFilter) filter = { ...filter, ...globalFilter };
-      // Recency for Latest: sort by release date desc, capped at today (query bound in service).
-      if (section.type === 'latest') {
-        filter = { ...filter, sort_by: 'primary_release_date.desc' };
-      }
+      const mediaType: 'movie' | 'tv' = filter.mediaType === 'tv' ? 'tv' : 'movie';
+      const pageArg = paginated ? page : undefined;
       let data: unknown[] = [];
+      let totalPages = 1;
+
       if (section.type === 'trending') {
-        data = await tmdbService.getTrending(activeTab === 'day' ? 'day' : 'week');
+        data = activeTab === 'month'
+          ? await tmdbService.getTrendingThisMonth()
+          : await tmdbService.getTrending(activeTab === 'day' ? 'day' : 'week');
+        if (paginated) {
+          totalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
+          data = data.slice((pageArg! - 1) * PAGE_SIZE, pageArg! * PAGE_SIZE);
+        }
       } else if (section.type === 'latest') {
-        data = await tmdbService.getLatest(filter.mediaType === 'tv' ? 'tv' : 'movie', filter);
+        const response = filter.mediaType === 'asian'
+          ? await tmdbService.getLatestMixed(filter, pageArg)
+          : await tmdbService.getLatest(mediaType, filter, pageArg);
+        data = response.results;
+        totalPages = response.totalPages;
+      } else if (section.type === 'fresh') {
+        const response = await tmdbService.getFreshThisYear(pageArg);
+        data = response.results;
+        totalPages = response.totalPages;
       } else if (section.type === 'topRated') {
-        data = await tmdbService.getTopRated(filter.mediaType === 'tv' ? 'tv' : 'movie', filter);
+        const response = filter.mediaType === 'asian'
+          ? await tmdbService.getDiscoverMixed({ ...filter, sort_by: 'vote_average.desc', 'vote_count.gte': 500 }, pageArg)
+          : await tmdbService.getTopRated(mediaType, filter, pageArg);
+        data = response.results;
+        totalPages = response.totalPages;
       } else if (section.type === 'bestOf') {
-        data = await tmdbService.getDiscoverMixed(filter);
+        const response = await tmdbService.getDiscoverMixed(filter, pageArg);
+        data = response.results;
+        totalPages = response.totalPages;
       } else if (section.type === 'genre') {
-        data = await tmdbService.getDiscover('movie', filter);
+        const response = await tmdbService.getDiscover(mediaType, filter, pageArg);
+        data = response.results;
+        totalPages = response.totalPages;
       } else if (section.type === 'curated') {
         if (filter.classics) {
-          data = await tmdbService.getClassics(filter.mediaType === 'tv' ? 'tv' : 'movie');
-          data = applyRecencyGate(data, filter.mediaType === 'tv' ? 'tv' : 'movie', section);
+          const response = await tmdbService.getClassics(mediaType, {}, pageArg);
+          data = applyRecencyGate(response.results, mediaType, section);
+          totalPages = response.totalPages;
         } else {
           const personId = Number(filter.personId);
-          if (!Number.isFinite(personId)) return [];
+          if (!Number.isFinite(personId)) return { items: [], totalPages: 1 };
           data = await tmdbService.getPersonMovieCredits(personId, filter.personJob === 'Director' ? 'Director' : 'Cast');
+          if (paginated) {
+            totalPages = Math.max(1, Math.ceil(data.length / PAGE_SIZE));
+            data = data.slice((pageArg! - 1) * PAGE_SIZE, pageArg! * PAGE_SIZE);
+          }
         }
       }
-      if (section.maxItems && data.length > section.maxItems) data = data.slice(0, section.maxItems);
-      return data as Record<string, unknown>[];
+
+      let items = uniqueItems(data as Record<string, unknown>[]);
+      if (!paginated && section.maxItems && items.length > section.maxItems) items = items.slice(0, section.maxItems);
+      return { items, totalPages };
     },
     enabled: enabled && section.enabled !== false,
     staleTime: 10 * 60 * 1000,

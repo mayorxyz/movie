@@ -2,24 +2,26 @@ import type { TmdbFilter } from '../types/filter';
 import type { FeatureFlag } from './features';
 import { mediaPresets } from './mediaPresets';
 import {
+  curatedAnimeGenres,
   curatedBestOf,
   curatedDirectors,
   curatedFemaleActors,
   curatedFranchises,
   curatedGenres,
   curatedMaleActors,
+  curatedTvGenres,
 } from './curated';
 
 export type SectionType =
   | 'trending'
   | 'latest'
+  | 'fresh'
   | 'recommendations'
   | 'topRated'
   | 'bestOf'
   | 'franchises'
   | 'genre'
-  | 'curated'
-  | 'loadMore';
+  | 'curated';
 
 export type CardVariant = 'poster' | 'wideRank' | 'franchise';
 
@@ -61,7 +63,6 @@ export interface SectionConfig {
   minItems?: number;
   maxItems?: number;
   showRank?: boolean;
-  batchSize?: number;
   respectsGlobalFilter?: boolean;
   enabled?: boolean;
   featureFlag?: FeatureFlag;
@@ -69,22 +70,23 @@ export interface SectionConfig {
 
 export interface HomeConfig {
   sections: SectionConfig[];
-  settings: {
-    loadMoreBatchSize: number;
-  };
 }
+
+// Anime = Animation genre + Japanese original language, enforced on top of the preset.
+const strictAnime: TmdbFilter = { ...mediaPresets.anime.filter, with_genres: '16', with_original_language: 'ja' };
+
+// Vote floors live in tmdbService (500 movie / 200 TV); only the niche tabs override them.
 const topRatedTabs: TabConfig[] = [
   { id: 'movie', label: 'Movie', filter: { mediaType: 'movie' } },
   { id: 'tv', label: 'TV Show', filter: { mediaType: 'tv' } },
-  { id: 'anime', label: 'Anime', filter: { ...mediaPresets.anime.filter, 'vote_count.gte': 500 } },
-  { id: 'asian', label: 'Asian', filter: { ...mediaPresets.asian.filter, 'vote_count.gte': 500 } },
+  { id: 'anime', label: 'Anime', filter: { ...strictAnime, 'vote_count.gte': 300 } },
+  { id: 'asian', label: 'Asian', filter: { ...mediaPresets.asian.filter, 'vote_count.gte': 300 } },
 ];
 
 const toOptions = (list: { id: number; label: string; filter: TmdbFilter }[]): DropdownOption[] =>
   list.map((o) => ({ id: o.id, label: o.label, filter: o.filter }));
 
 export const homeConfig: HomeConfig = {
-  settings: { loadMoreBatchSize: 2 },
   sections: [
     {
       id: 'trending', type: 'trending', title: 'Trending', seeAllLink: '/browse/trending',
@@ -92,10 +94,11 @@ export const homeConfig: HomeConfig = {
       tabs: [
         { id: 'day', label: 'Day', filter: {} },
         { id: 'week', label: 'Week', filter: {} },
+        { id: 'month', label: 'Month', filter: {} },
       ],
-      defaultTab: 'week',
-      fetcher: { endpoint: '/trending/movie/{window}', params: {} },
-      maxItems: 10, showRank: true, respectsGlobalFilter: false, enabled: true,
+      defaultTab: 'day',
+      fetcher: { endpoint: '/trending/all/{window}', params: {} },
+      minItems: 5, maxItems: 10, showRank: true, respectsGlobalFilter: false, enabled: true,
     },
     {
       id: 'latest', type: 'latest', title: 'Latest', seeAllLink: '/browse/latest',
@@ -103,30 +106,30 @@ export const homeConfig: HomeConfig = {
       tabs: [
         { id: 'movie', label: 'Movie', filter: { mediaType: 'movie' } },
         { id: 'tv', label: 'TV Show', filter: { mediaType: 'tv' } },
-        { id: 'anime', label: 'Anime', filter: { ...mediaPresets.anime.filter } },
-        { id: 'asian', label: 'Asian', filter: { ...mediaPresets.asian.filter } },
+        { id: 'anime', label: 'Anime', filter: { ...strictAnime } },
+        { id: 'asian', label: 'Asian', filter: { ...mediaPresets.asian.filter, mediaType: 'asian' } },
       ],
       defaultTab: 'movie',
-      fetcher: { endpoint: '/discover/{mediaType}', params: { sort_by: 'primary_release_date.desc' } },
-      maxItems: 20, respectsGlobalFilter: true, enabled: true,
+      fetcher: { endpoint: '/discover/{mediaType}', params: {} },
+      minItems: 6, maxItems: 20, respectsGlobalFilter: true, enabled: true,
     },
     {
-      id: 'recommendations', type: 'recommendations', title: 'Your Next Watch',
+      id: 'freshThisYear', type: 'fresh', title: 'Fresh This Year',
       cardVariant: 'poster',
-      fetcher: { endpoint: '/recommendations', params: {} },
-      respectsGlobalFilter: true, enabled: true,
+      fetcher: { endpoint: '/discover/mixed', params: {} },
+      minItems: 6, maxItems: 20, respectsGlobalFilter: false, enabled: true,
     },
     {
       id: 'topRated', type: 'topRated', title: 'Top Rated', seeAllLink: '/browse/top-rated',
       cardVariant: 'poster', tabs: topRatedTabs, defaultTab: 'movie',
-      fetcher: { endpoint: '/{mediaType}/top_rated', params: { 'vote_count.gte': 500, sort_by: 'vote_average.desc' } },
-      maxItems: 20, respectsGlobalFilter: true, enabled: true,
+      fetcher: { endpoint: '/discover/{mediaType}', params: { sort_by: 'vote_average.desc' } },
+      minItems: 6, maxItems: 20, respectsGlobalFilter: true, enabled: true,
     },
     {
       id: 'bestOf', type: 'bestOf', title: 'Best Of', cardVariant: 'poster',
       dropdown: { label: 'Network / Studio', options: toOptions(curatedBestOf), defaultOption: 213 },
       fetcher: { endpoint: '/discover/mixed', params: { sort_by: 'popularity.desc' } },
-      maxItems: 20, respectsGlobalFilter: false, enabled: true,
+      minItems: 6, maxItems: 20, respectsGlobalFilter: false, enabled: true,
     },
     {
       id: 'franchises', type: 'franchises', title: 'Featured Franchises', cardVariant: 'franchise',
@@ -137,8 +140,20 @@ export const homeConfig: HomeConfig = {
     {
       id: 'genre', type: 'genre', title: 'Movie Genre', cardVariant: 'poster',
       dropdown: { label: 'Genre', options: toOptions(curatedGenres), defaultOption: 28 },
-      fetcher: { endpoint: '/discover/movie', params: { sort_by: 'popularity.desc' } },
-      maxItems: 20, respectsGlobalFilter: true, enabled: true,
+      fetcher: { endpoint: '/discover/movie', params: { mediaType: 'movie', sort_by: 'popularity.desc' } },
+      minItems: 6, maxItems: 20, respectsGlobalFilter: true, enabled: true,
+    },
+    {
+      id: 'animeGenre', type: 'genre', title: 'Anime Genre', cardVariant: 'poster',
+      dropdown: { label: 'Genre', options: toOptions(curatedAnimeGenres), defaultOption: 16 },
+      fetcher: { endpoint: '/discover/tv', params: { mediaType: 'tv', sort_by: 'popularity.desc' } },
+      minItems: 6, maxItems: 20, respectsGlobalFilter: false, enabled: true,
+    },
+    {
+      id: 'series', type: 'genre', title: 'Series', cardVariant: 'poster',
+      dropdown: { label: 'Genre', options: toOptions(curatedTvGenres), defaultOption: 10759 },
+      fetcher: { endpoint: '/discover/tv', params: { mediaType: 'tv', sort_by: 'popularity.desc' } },
+      minItems: 6, maxItems: 20, respectsGlobalFilter: false, enabled: true,
     },
     {
       id: 'classics', type: 'curated', title: 'Classics', seeAllLink: '/browse/classics',
@@ -149,7 +164,7 @@ export const homeConfig: HomeConfig = {
       ],
       defaultTab: 'movie',
       fetcher: { endpoint: '/discover/{mediaType}/classics', params: {} },
-      maxItems: 20, respectsGlobalFilter: true, enabled: true,
+      minItems: 6, maxItems: 20, respectsGlobalFilter: true, enabled: true,
     },
     {
       id: 'directors', type: 'curated', title: 'Directors', cardVariant: 'poster',
@@ -165,15 +180,9 @@ export const homeConfig: HomeConfig = {
     },
     {
       id: 'femaleActor', type: 'curated', title: 'Female Actor', cardVariant: 'poster',
-      dropdown: { label: 'Actor', options: toOptions(curatedFemaleActors), defaultOption: 1136406 },
+      dropdown: { label: 'Actor', options: toOptions(curatedFemaleActors), defaultOption: 1373737 },
       fetcher: { endpoint: '/person/{id}/movie_credits', params: { personJob: 'Cast', sort_by: 'popularity.desc' } },
       maxItems: 20, respectsGlobalFilter: false, enabled: true,
     },
-    {
-      id: 'loadMore', type: 'loadMore', title: 'Load More', cardVariant: 'poster',
-      fetcher: { endpoint: '/load-more', params: {} },
-      batchSize: 2, respectsGlobalFilter: false, enabled: true,
-    },
   ],
 };
-

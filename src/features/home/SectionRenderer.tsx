@@ -1,36 +1,43 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
-import { filterReleased } from '../../lib/releaseFilters';
 import type { SectionConfig } from '../../config/homeSections';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { SegmentedTabs } from '../../components/ui/SegmentedTabs';
 import { DropdownSelect } from '../../components/ui/DropdownSelect';
 import { ContentRow } from '../../components/ui/ContentRow';
 import { RecommendationsBanner } from '../../components/ui/RecommendationsBanner';
-import { FranchiseCard, FranchiseSkeleton, type FranchiseSummary } from '../../components/ui/FranchiseCard';
+import { FranchiseCard, FranchiseSkeleton } from '../../components/ui/FranchiseCard';
 import { PosterSkeleton } from '../../components/ui/Skeleton';
 import { useSectionFetcher } from '../../hooks/useSectionFetcher';
 import { useSectionParam } from '../../hooks/useSectionParam';
 import { useInViewport } from '../../hooks/useInViewport';
-import { tmdbService } from '../../services/tmdbClient';
+import { useFranchises } from '../../hooks/useFranchises';
 
 export interface SectionRendererProps {
   section: SectionConfig;
   eager?: boolean;
-  onLoadMore?: () => void;
-  loadMoreRemaining?: number;
 }
 
-function SectionShell({ title, seeAllLink, control, children }: {
+/** URL of the full-list page for a section, preserving the active tab/dropdown. */
+export function sectionHref(section: SectionConfig, value?: string | number): string {
+  const base = `/section/${section.id}`;
+  return value === undefined ? base : `${base}?${section.id}=${encodeURIComponent(String(value))}`;
+}
+
+function SectionShell({
+  title,
+  titleHref,
+  control,
+  children,
+}: {
   title: string;
-  seeAllLink?: string;
+  titleHref?: string;
   control?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="py-8">
-      <SectionHeader title={title} seeAllLink={seeAllLink}>
+    <section className="py-3.5 sm:py-5 md:py-7">
+      <SectionHeader title={title} titleHref={titleHref}>
         {control}
       </SectionHeader>
       {children}
@@ -40,13 +47,16 @@ function SectionShell({ title, seeAllLink, control, children }: {
 
 function SectionError({ label, onRetry }: { label: string; onRetry: () => void }) {
   return (
-    <div className="px-4 md:px-8 lg:px-12 py-8 text-center">
-      <p className="text-[var(--color-text-muted)] mb-4">Failed to load {label}</p>
+    <div className="px-4 md:px-8 lg:px-12 py-5 md:py-7 text-center">
+      <p className="text-[var(--color-text-muted)] mb-2.5 md:mb-3 text-xs md:text-sm">
+        Failed to load {label}
+      </p>
       <button
+        type="button"
         onClick={onRetry}
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-surface-raised)] border border-[var(--color-border)] text-sm text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
+        className="inline-flex items-center gap-1.5 px-4 md:px-5 h-9 md:h-10 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-xs md:text-sm font-medium text-[var(--color-text)] active:scale-95 hover:border-[var(--color-text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] transition-all duration-150 touch-manipulation"
       >
-        <RefreshCw className="w-4 h-4" />
+        <RefreshCw className="w-3.5 h-3.5 md:w-4 md:h-4" />
         Retry
       </button>
     </div>
@@ -56,24 +66,34 @@ function SectionError({ label, onRetry }: { label: string; onRetry: () => void }
 function TabbedSection({ section, eager }: { section: SectionConfig; eager: boolean }) {
   const tabs = section.tabs ?? [];
   const validTabs = useMemo(() => tabs.map((t) => t.id), [tabs]);
-  const [activeTab, setActiveTab] = useSectionParam(section.id, validTabs, section.defaultTab ?? validTabs[0] ?? '');
+  const [activeTab, setActiveTab] = useSectionParam(
+    section.id,
+    validTabs,
+    section.defaultTab ?? validTabs[0] ?? '',
+  );
   const { ref, visible } = useInViewport<HTMLDivElement>(eager);
   const query = useSectionFetcher({ section, activeTab, enabled: visible });
 
   return (
     <SectionShell
       title={section.title}
-      seeAllLink={section.seeAllLink}
+      titleHref={sectionHref(section, tabs.length > 0 ? activeTab : undefined)}
       control={
         tabs.length > 0 ? (
-          <SegmentedTabs tabs={tabs.map(({ id, label }) => ({ id, label }))} activeTab={activeTab} onChange={setActiveTab} />
+          <div className="w-full min-w-0 overflow-x-auto no-scrollbar max-w-full md:w-auto -mx-4 px-4 md:mx-0 md:px-0">
+            <SegmentedTabs
+              tabs={tabs.map(({ id, label }) => ({ id, label }))}
+              activeTab={activeTab}
+              onChange={setActiveTab}
+            />
+          </div>
         ) : undefined
       }
     >
       <div ref={ref}>
         <ContentRow
           section={section}
-          items={(query.data as Record<string, unknown>[] | undefined) ?? null}
+          items={query.data?.items ?? null}
           loading={!visible || query.isLoading}
           error={query.isError}
           onRetry={() => query.refetch()}
@@ -96,7 +116,7 @@ function DropdownSection({ section, eager }: { section: SectionConfig; eager: bo
   return (
     <SectionShell
       title={section.title}
-      seeAllLink={section.seeAllLink}
+      titleHref={sectionHref(section, options.length > 0 ? activeValue : undefined)}
       control={
         section.dropdown ? (
           <DropdownSelect
@@ -111,7 +131,7 @@ function DropdownSection({ section, eager }: { section: SectionConfig; eager: bo
       <div ref={ref}>
         <ContentRow
           section={section}
-          items={(query.data as Record<string, unknown>[] | undefined) ?? null}
+          items={query.data?.items ?? null}
           loading={!visible || query.isLoading}
           error={query.isError}
           onRetry={() => query.refetch()}
@@ -123,49 +143,14 @@ function DropdownSection({ section, eager }: { section: SectionConfig; eager: bo
 
 function FranchisesSection({ section, eager }: { section: SectionConfig; eager: boolean }) {
   const { ref, visible } = useInViewport<HTMLDivElement>(eager);
-  const ids = useMemo(() => (section.collections ?? []).map((c) => c.id), [section]);
-  const query = useQuery({
-    queryKey: ['section', section.id, 'collections', ids],
-    queryFn: async (): Promise<FranchiseSummary[]> => {
-      const results = await Promise.all(
-        ids.map(async (id) => {
-          try {
-            const collection = await tmdbService.getCollection(id);
-            // Service already result-filters unreleased parts; re-filter identically for mocks.
-            const parts = filterReleased(collection.parts ?? [], { requirePoster: false });
-            const years = parts
-              .map((p) => (p.release_date ? new Date(p.release_date).getFullYear() : NaN))
-              .filter((y) => Number.isFinite(y))
-              .sort((a, b) => a - b);
-            const ratings = parts.map((p) => p.vote_average ?? 0).filter((r) => r > 0);
-            return {
-              id: collection.id,
-              name: collection.name,
-              titleCount: parts.length,
-              yearRange: years.length > 0 ? `${years[0]}–${years[years.length - 1]}` : '',
-              averageRating: ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0,
-              posters: parts.slice(0, 3).map((p) => p.poster_path),
-            } satisfies FranchiseSummary;
-          } catch {
-            return null;
-          }
-        }),
-      );
-      return results.filter((r: FranchiseSummary | null): r is FranchiseSummary => r !== null);
-    },
-    enabled: visible && section.enabled !== false,
-    staleTime: 30 * 60 * 1000,
-    gcTime: 60 * 60 * 1000,
-    retry: 1,
-    placeholderData: (previous) => previous,
-  });
+  const query = useFranchises(section, visible);
 
   const data = query.data ?? [];
   return (
-    <SectionShell title={section.title} seeAllLink={section.seeAllLink}>
+    <SectionShell title={section.title} titleHref={sectionHref(section)}>
       <div ref={ref} className="relative">
         {(!visible || query.isLoading) && (
-          <div className="flex gap-3 overflow-hidden px-4 md:px-8 lg:px-12" aria-label="Loading franchises">
+          <div className="flex gap-2.5 md:gap-3 overflow-hidden px-4 md:px-8 lg:px-12" aria-label="Loading franchises">
             {Array.from({ length: 4 }).map((_, i) => (
               <FranchiseSkeleton key={i} />
             ))}
@@ -173,14 +158,16 @@ function FranchisesSection({ section, eager }: { section: SectionConfig; eager: 
         )}
         {visible && query.isError && <SectionError label={section.title} onRetry={() => query.refetch()} />}
         {visible && !query.isLoading && !query.isError && data.length === 0 && (
-          <div className="px-4 md:px-8 lg:px-12 py-8 text-center">
-            <p className="text-[var(--color-text-muted)]">No results found</p>
+          <div className="px-4 md:px-8 lg:px-12 py-5 md:py-7 text-center">
+            <p className="text-[var(--color-text-muted)] text-xs md:text-sm">No results found</p>
           </div>
         )}
         {visible && !query.isLoading && !query.isError && data.length > 0 && (
-          <div className="rail-scroll flex gap-3 overflow-x-auto px-4 md:px-8 lg:px-12 pb-2">
+          <div className="rail-scroll flex gap-2.5 md:gap-3 overflow-x-auto snap-x snap-mandatory scroll-pl-4 md:scroll-pl-8 lg:scroll-pl-12 px-4 md:px-8 lg:px-12 pb-1.5 scrollbar-none [overflow-scrolling:touch]">
             {data.map((f) => (
-              <FranchiseCard key={f.id} franchise={f} />
+              <div key={f.id} className="snap-start shrink-0">
+                <FranchiseCard franchise={f} />
+              </div>
             ))}
           </div>
         )}
@@ -188,6 +175,7 @@ function FranchisesSection({ section, eager }: { section: SectionConfig; eager: 
     </SectionShell>
   );
 }
+
 function RecommendationsSection({ section }: { section: SectionConfig }) {
   return (
     <SectionShell title={section.title}>
@@ -196,31 +184,24 @@ function RecommendationsSection({ section }: { section: SectionConfig }) {
   );
 }
 
-function LoadMoreSection({ section, onLoadMore, remaining }: {
-  section: SectionConfig;
-  onLoadMore?: () => void;
-  remaining: number;
-}) {
-  if (remaining <= 0) return null;
-  return (
-    <div className="px-4 md:px-8 lg:px-12 py-8 text-center">
-      <button
-        onClick={onLoadMore}
-        className="px-6 py-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm font-medium text-[var(--color-text)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
-      >
-        Load more ({remaining} remaining)
-      </button>
-      <span className="sr-only">{section.title}</span>
-    </div>
-  );
-}
-
-export function SectionRenderer({ section, eager = false, onLoadMore, loadMoreRemaining = 0 }: SectionRendererProps) {
-  if (section.type === 'trending' || section.type === 'latest' || section.type === 'topRated') {
+export function SectionRenderer({ section, eager = false }: SectionRendererProps) {
+  if (
+    section.type === 'trending' ||
+    section.type === 'latest' ||
+    section.type === 'topRated' ||
+    section.type === 'fresh'
+  ) {
     return <TabbedSection section={section} eager={eager} />;
   }
-  if (section.type === 'bestOf' || section.type === 'genre' || section.type === 'curated') {
+  if (section.type === 'bestOf' || section.type === 'genre') {
     return <DropdownSection section={section} eager={eager} />;
+  }
+  if (section.type === 'curated') {
+    return section.tabs ? (
+      <TabbedSection section={section} eager={eager} />
+    ) : (
+      <DropdownSection section={section} eager={eager} />
+    );
   }
   if (section.type === 'franchises') {
     return <FranchisesSection section={section} eager={eager} />;
@@ -228,16 +209,13 @@ export function SectionRenderer({ section, eager = false, onLoadMore, loadMoreRe
   if (section.type === 'recommendations') {
     return <RecommendationsSection section={section} />;
   }
-  if (section.type === 'loadMore') {
-    return <LoadMoreSection section={section} onLoadMore={onLoadMore} remaining={loadMoreRemaining} />;
-  }
   return null;
 }
 
 export function SectionSkeleton({ variant }: { variant: 'poster' | 'wideRank' | 'franchise' }) {
   if (variant === 'franchise') {
     return (
-      <div className="flex gap-3 overflow-hidden px-4 md:px-8 lg:px-12">
+      <div className="flex gap-2.5 md:gap-3 overflow-hidden px-4 md:px-8 lg:px-12">
         {Array.from({ length: 4 }).map((_, i) => (
           <FranchiseSkeleton key={i} />
         ))}
@@ -246,14 +224,14 @@ export function SectionSkeleton({ variant }: { variant: 'poster' | 'wideRank' | 
   }
   const count = variant === 'wideRank' ? 3 : 6;
   return (
-    <div className="flex gap-3 overflow-hidden px-4 md:px-8 lg:px-12">
+    <div className="flex gap-2.5 md:gap-3 overflow-hidden px-4 md:px-8 lg:px-12">
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
           className={
             variant === 'wideRank'
-              ? 'flex-shrink-0 w-[400px] md:w-[500px] aspect-[16/10]'
-              : 'flex-shrink-0 w-[140px] md:w-[180px]'
+              ? 'flex-shrink-0 w-[240px] sm:w-[320px] md:w-[460px] lg:w-[500px] aspect-[16/10]'
+              : 'flex-shrink-0 w-[112px] sm:w-[140px] md:w-[165px] lg:w-[180px]'
           }
         >
           <PosterSkeleton />
@@ -262,4 +240,3 @@ export function SectionSkeleton({ variant }: { variant: 'poster' | 'wideRank' | 
     </div>
   );
 }
-

@@ -7,6 +7,7 @@ export const theme = {
     textMuted: '#8A8A8D',
     accent: '#D4A853',
     accentHover: '#E0B86A',
+    rating: '#F5C451',
     border: '#2A2A2D',
     error: '#E5484D',
     success: '#46A758',

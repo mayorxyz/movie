@@ -35,7 +35,7 @@ export const mediaPresets = {
     label: 'Asian',
     filter: {
       mediaType: 'tv',
-      with_original_language: 'ko|ja|zh|th|hi',
+      with_origin_country: 'KR|JP|CN|TH|IN',
     } as TmdbFilter,
   },
 } as const;

@@ -3,6 +3,10 @@ node_modules/
 dist/
 build/
 *.log
+
+# Environment secrets: never commit real values
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example

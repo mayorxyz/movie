@@ -2,7 +2,6 @@ import { useSearchParams } from 'react-router-dom';
 import { useCallback, useMemo } from 'react';
 import type { UpcomingFilters, UpcomingType } from './types';
 import {
-  getCurrentMonth,
   parseMonth,
   isMonthInRange,
   getPreviousMonth,
@@ -21,46 +20,47 @@ export function useUpcomingFilters() {
   const setMonth = useCallback((month: string) => {
     if (!parseMonth(month) || !isMonthInRange(month)) return;
     
-    const newFilters: UpcomingFilters = {
-      ...filters,
-      month,
-      day: undefined, // Clear day when month changes
-    };
-    
-    setSearchParams(filtersToSearchParams(newFilters), { replace: true });
-  }, [filters, setSearchParams]);
+    setSearchParams(prev => {
+      const current = parseUpcomingFilters(prev);
+      return filtersToSearchParams({ ...current, month, day: undefined });
+    }, { replace: true });
+  }, [setSearchParams]);
   
   const setType = useCallback((type: UpcomingType) => {
-    const newFilters: UpcomingFilters = {
-      ...filters,
-      type,
-    };
-    
-    setSearchParams(filtersToSearchParams(newFilters), { replace: true });
-  }, [filters, setSearchParams]);
+    setSearchParams(prev => {
+      const current = parseUpcomingFilters(prev);
+      return filtersToSearchParams({ ...current, type });
+    }, { replace: true });
+  }, [setSearchParams]);
   
   const setDay = useCallback((day: string | undefined) => {
-    const newFilters: UpcomingFilters = {
-      ...filters,
-      day,
-    };
-    
-    setSearchParams(filtersToSearchParams(newFilters), { replace: true });
-  }, [filters, setSearchParams]);
+    setSearchParams(prev => {
+      const current = parseUpcomingFilters(prev);
+      return filtersToSearchParams({ ...current, day });
+    }, { replace: true });
+  }, [setSearchParams]);
   
   const goToPreviousMonth = useCallback(() => {
     const prevMonth = getPreviousMonth(filters.month);
     if (isMonthInRange(prevMonth)) {
-      setMonth(prevMonth);
+      // We can safely call setMonth here; it will handle the validation
+      // Alternatively, inline the logic to avoid double parsing, but setMonth is fine.
+      setSearchParams(prev => {
+        const current = parseUpcomingFilters(prev);
+        return filtersToSearchParams({ ...current, month: prevMonth, day: undefined });
+      }, { replace: true });
     }
-  }, [filters.month, setMonth]);
+  }, [filters.month, setSearchParams]);
   
   const goToNextMonth = useCallback(() => {
     const nextMonth = getNextMonth(filters.month);
     if (isMonthInRange(nextMonth)) {
-      setMonth(nextMonth);
+      setSearchParams(prev => {
+        const current = parseUpcomingFilters(prev);
+        return filtersToSearchParams({ ...current, month: nextMonth, day: undefined });
+      }, { replace: true });
     }
-  }, [filters.month, setMonth]);
+  }, [filters.month, setSearchParams]);
   
   return {
     ...filters,

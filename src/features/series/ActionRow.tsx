@@ -1,4 +1,3 @@
-import React from 'react';
 import { Play, Download, Bookmark, BookmarkCheck } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { site } from '../../config/site';
@@ -33,42 +32,42 @@ export function ActionRow({ series, onTrailerClick, released = true }: ActionRow
     }
   };
 
-  const hasTrailer = features.trailers && (series as any).videos?.results?.some(
-    (v: any) => v.site === 'YouTube' && v.type === 'Trailer'
-  );
+  const hasTrailer =
+    features.trailers &&
+    (series as any).videos?.results?.some((v: any) => v.site === 'YouTube' && v.type === 'Trailer');
 
   return (
-    <div className="flex flex-wrap items-center gap-3 mt-6">
-      {/* Trailer button */}
+    <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 sm:gap-2.5">
       {hasTrailer && (
-        <Button variant="primary" size="md" onClick={onTrailerClick}>
-          <Play className="w-4 h-4 mr-2" />
+        <Button variant="primary" size="sm" onClick={onTrailerClick}>
+          <Play className="w-3.5 h-3.5 fill-current" strokeWidth={1.75} />
           {site.copy.trailer}
         </Button>
       )}
 
-      {/* Watchlist button */}
       <Button
         variant={inWatchlist ? 'secondary' : 'primary'}
-        size="md"
+        size="sm"
         onClick={handleWatchlistToggle}
       >
-        {inWatchlist ? <BookmarkCheck className="w-4 h-4 mr-2" /> : <Bookmark className="w-4 h-4 mr-2" />}
+        {inWatchlist ? (
+          <BookmarkCheck className="w-3.5 h-3.5" strokeWidth={1.75} />
+        ) : (
+          <Bookmark className="w-3.5 h-3.5" strokeWidth={1.75} />
+        )}
         {inWatchlist ? site.copy.inWatchlist : site.copy.addToWatchlist}
       </Button>
 
-      {/* Stream button (disabled) */}
       {released && (
-        <Button variant="secondary" size="md" comingSoon featureFlag="streamButton">
-          <Play className="w-4 h-4 mr-2" />
+        <Button variant="secondary" size="sm" comingSoon featureFlag="streamButton">
+          <Play className="w-3.5 h-3.5" strokeWidth={1.75} />
           {site.copy.watch}
         </Button>
       )}
 
-      {/* Download button (disabled) */}
       {released && (
-        <Button variant="secondary" size="md" comingSoon featureFlag="downloadButton">
-          <Download className="w-4 h-4 mr-2" />
+        <Button variant="secondary" size="sm" comingSoon featureFlag="downloadButton">
+          <Download className="w-3.5 h-3.5" strokeWidth={1.75} />
           {site.copy.download}
         </Button>
       )}

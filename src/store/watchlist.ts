@@ -2,6 +2,22 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { WatchlistItem } from '../types';
 
+const STORAGE_KEY = 'movievault-watchlist';
+const LEGACY_KEY = 'cinevault-watchlist';
+
+// One-time migration so existing saved collections survive the rebrand.
+try {
+  if (!localStorage.getItem(STORAGE_KEY)) {
+    const legacy = localStorage.getItem(LEGACY_KEY);
+    if (legacy) {
+      localStorage.setItem(STORAGE_KEY, legacy);
+      localStorage.removeItem(LEGACY_KEY);
+    }
+  }
+} catch {
+  /* storage unavailable */
+}
+
 interface WatchlistState {
   items: WatchlistItem[];
   addItem: (item: WatchlistItem) => void;
@@ -29,7 +45,7 @@ export const useWatchlistStore = create<WatchlistState>()(
       clearWatchlist: () => set({ items: [] }),
     }),
     {
-      name: 'cinevault-watchlist',
+      name: STORAGE_KEY,
     }
   )
 );

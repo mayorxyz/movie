@@ -1,45 +1,67 @@
-import React from 'react';
+import { useEffect, useId, useState } from 'react';
 
 interface RatingRingProps {
   rating: number;
   size?: 'sm' | 'md' | 'lg';
+  showPercent?: boolean;
 }
 
-export function RatingRing({ rating, size = 'md' }: RatingRingProps) {
-  const percentage = (rating / 10) * 100;
-  const radius = size === 'sm' ? 16 : size === 'md' ? 20 : 26;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
-  
-  const color = rating >= 7 ? 'var(--color-success)' : rating >= 5 ? 'var(--color-accent)' : 'var(--color-error)';
-  const svgSize = size === 'sm' ? 40 : size === 'md' ? 48 : 60;
+const config = {
+  sm: { star: 18, text: 'text-[12px]', gap: 'gap-1' },
+  md: { star: 24, text: 'text-[14px]', gap: 'gap-1.5' },
+  lg: { star: 34, text: 'text-[18px]', gap: 'gap-2' },
+};
+
+const STAR = 'M12 2.5l2.94 5.96 6.58.96-4.76 4.64 1.12 6.55L12 17.52l-5.88 3.09 1.12-6.55L2.48 9.42l6.58-.96L12 2.5z';
+
+export function RatingRing({ rating, size = 'md', showPercent = false }: RatingRingProps) {
+  const safe = Number.isFinite(rating) ? rating : 0;
+  const percentage = Math.min(100, Math.max(0, (safe / 10) * 100));
+  const unrated = safe <= 0;
+  const { star, text, gap } = config[size];
+  const clipId = `star-${useId().replace(/:/g, '')}`;
+
+  // Gold fill grows from 0 to the rating on mount
+  const [fill, setFill] = useState(0);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setFill(percentage));
+    return () => cancelAnimationFrame(id);
+  }, [percentage]);
+
+  const label = unrated ? 'Not rated' : `Rating: ${safe.toFixed(1)} out of 10`;
+  const value = unrated ? 'NR' : showPercent ? `${Math.round(percentage)}%` : safe.toFixed(1);
 
   return (
-    <div className="relative inline-flex items-center justify-center" role="img" aria-label={`Rating: ${rating.toFixed(1)} out of 10`}>
-      <svg width={svgSize} height={svgSize} className="-rotate-90">
-        <circle
-          cx={svgSize / 2}
-          cy={svgSize / 2}
-          r={radius}
-          fill="none"
-          stroke="var(--color-border)"
-          strokeWidth={size === 'sm' ? 2 : 3}
-        />
-        <circle
-          cx={svgSize / 2}
-          cy={svgSize / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={size === 'sm' ? 2 : 3}
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-          className="transition-all duration-500"
-        />
+    <div className={`inline-flex items-center ${gap}`} role="img" aria-label={label}>
+      <svg width={star} height={star} viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <clipPath id={clipId}>
+            <rect
+              x="0"
+              y="0"
+              height="24"
+              style={{ width: `${(24 * fill) / 100}px`, transition: 'width 700ms ease-out' }}
+            />
+          </clipPath>
+        </defs>
+        <path d={STAR} fill="var(--color-border)" strokeLinejoin="round" />
+        {!unrated && (
+          <path
+            d={STAR}
+            fill="var(--color-rating)"
+            stroke="var(--color-rating)"
+            strokeWidth="1"
+            strokeLinejoin="round"
+            clipPath={`url(#${clipId})`}
+          />
+        )}
       </svg>
-      <span className={`absolute font-semibold ${size === 'sm' ? 'text-xs' : size === 'md' ? 'text-sm' : 'text-base'}`} style={{ color }}>
-        {rating.toFixed(1)}
+      <span
+        className={`font-semibold tabular-nums ${text} ${
+          unrated ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text)]'
+        }`}
+      >
+        {value}
       </span>
     </div>
   );

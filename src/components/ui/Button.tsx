@@ -8,35 +8,52 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   featureFlag?: 'downloadButton' | 'streamButton';
 }
 
-export function Button({ variant = 'primary', size = 'md', comingSoon, featureFlag, className = '', children, ...props }: ButtonProps) {
-  const isDisabled = comingSoon || (featureFlag && !isFeatureEnabled(featureFlag));
-  
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]';
-  
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  comingSoon,
+  featureFlag,
+  className = '',
+  children,
+  disabled,
+  title,
+  type = 'button',
+  ...props
+}: ButtonProps) {
+  const isDisabled = Boolean(comingSoon || (featureFlag && !isFeatureEnabled(featureFlag)));
+
+  const baseClasses =
+    'inline-flex items-center justify-center gap-1.5 md:gap-2 rounded-full font-semibold whitespace-nowrap select-none transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100';
+
   const variantClasses = {
-    primary: 'bg-[var(--color-accent)] text-[var(--color-base)] hover:bg-[var(--color-accent-hover)]',
-    secondary: 'bg-[var(--color-surface-raised)] text-[var(--color-text)] border border-[var(--color-border)] hover:border-[var(--color-text-muted)]',
-    ghost: 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-raised)]',
-    disabled: 'bg-[var(--color-surface-raised)] text-[var(--color-text-muted)] cursor-not-allowed opacity-50',
+    primary: 'bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]',
+    secondary: 'bg-[var(--color-surface-raised)] text-[var(--color-text)] hover:bg-[var(--color-border)]',
+    ghost: 'bg-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]',
+    disabled: 'bg-[var(--color-surface)] text-[var(--color-text-muted)]',
   };
 
   const sizeClasses = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-6 py-3 text-base',
+    sm: 'h-8 md:h-9 px-3 md:px-4 text-[12px] md:text-[13px]',
+    md: 'h-9 md:h-10 px-4 md:px-5 text-[13px] md:text-[14px]',
+    lg: 'h-10 md:h-11 px-5 md:px-7 text-[14px] md:text-[15px]',
   };
 
   const finalVariant = isDisabled ? 'disabled' : variant;
 
   return (
     <button
+      type={type}
       className={`${baseClasses} ${variantClasses[finalVariant]} ${sizeClasses[size]} ${className}`}
-      disabled={isDisabled}
-      title={isDisabled ? 'Coming soon' : undefined}
+      disabled={isDisabled || disabled}
+      title={isDisabled ? 'Coming soon' : title}
       {...props}
     >
       {children}
-      {isDisabled && <span className="ml-2 text-xs opacity-70">Coming soon</span>}
+      {isDisabled && (
+        <span className="ml-0.5 text-[10px] md:text-[11px] uppercase tracking-[0.06em] text-[var(--color-text-faint)]">
+          Soon
+        </span>
+      )}
     </button>
   );
 }

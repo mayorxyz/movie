@@ -3,8 +3,8 @@ import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import type { SectionConfig } from '../../config/homeSections';
 import { PosterCard } from './PosterCard';
 import { RankCard } from './RankCard';
-import { FranchiseCard, type FranchiseSummary } from './FranchiseCard';
-import { PosterSkeleton } from './Skeleton';
+import { FranchiseCard, FranchiseSkeleton, type FranchiseSummary } from './FranchiseCard';
+import { PosterSkeleton, Skeleton } from './Skeleton';
 
 interface ContentRowProps {
   section: SectionConfig;
@@ -25,6 +25,12 @@ type CardItem = {
   release_date?: string;
   first_air_date?: string;
 };
+
+const arrowBtn =
+  'hidden md:inline-flex absolute top-[38%] -translate-y-1/2 z-10 w-10 h-10 items-center justify-center rounded-full bg-[var(--color-surface-raised)] text-[var(--color-text)] shadow-[0_8px_24px_rgba(0,0,0,0.5)] opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 hover:bg-[var(--color-accent)] transition-[opacity,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]';
+
+const retryBtn =
+  'inline-flex items-center gap-2 h-11 px-6 rounded-full bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-[14px] font-semibold active:scale-[0.98] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg)]';
 
 export function ContentRow({ section, items, loading, error, onRetry }: ContentRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -90,31 +96,31 @@ export function ContentRow({ section, items, loading, error, onRetry }: ContentR
     const count = Math.min(section.maxItems ?? 10, 6);
     return (
       <div className="flex gap-3 overflow-hidden px-4 md:px-8 lg:px-12" aria-label={`Loading ${section.title}`}>
-        {Array.from({ length: count }).map((_, i) => (
-          <div
-            key={i}
-            className={
-              section.cardVariant === 'wideRank'
-                ? 'flex-shrink-0 w-[400px] md:w-[500px] aspect-[16/10]'
-                : 'flex-shrink-0 w-[140px] md:w-[180px]'
-            }
-          >
-            <PosterSkeleton />
-          </div>
-        ))}
+        {Array.from({ length: count }).map((_, i) => {
+          if (section.cardVariant === 'franchise') return <FranchiseSkeleton key={i} />;
+          if (section.cardVariant === 'wideRank') {
+            return (
+              <div key={i} className="flex-shrink-0 w-[300px] sm:w-[400px] md:w-[500px] aspect-[16/10]">
+                <Skeleton className="w-full h-full rounded-[20px]" />
+              </div>
+            );
+          }
+          return (
+            <div key={i} className="flex-shrink-0 w-[140px] md:w-[180px]">
+              <PosterSkeleton />
+            </div>
+          );
+        })}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="px-4 md:px-8 lg:px-12 py-8 text-center">
-        <p className="text-[var(--color-text-muted)] mb-4">Failed to load {section.title}</p>
-        <button
-          onClick={onRetry}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-surface-raised)] border border-[var(--color-border)] text-sm text-[var(--color-text)] hover:border-[var(--color-text-muted)] transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
+      <div className="px-4 md:px-8 lg:px-12 py-10 flex flex-col items-center text-center">
+        <p className="text-[14px] text-[var(--color-text-muted)] mb-4">Failed to load {section.title}</p>
+        <button onClick={onRetry} className={retryBtn}>
+          <RefreshCw className="w-4 h-4" strokeWidth={1.75} />
           Retry
         </button>
       </div>
@@ -123,8 +129,8 @@ export function ContentRow({ section, items, loading, error, onRetry }: ContentR
 
   if (!items || items.length === 0) {
     return (
-      <div className="px-4 md:px-8 lg:px-12 py-8 text-center">
-        <p className="text-[var(--color-text-muted)]">No results found</p>
+      <div className="px-4 md:px-8 lg:px-12 py-10 text-center">
+        <p className="text-[14px] text-[var(--color-text-muted)]">No results found</p>
       </div>
     );
   }
@@ -132,12 +138,8 @@ export function ContentRow({ section, items, loading, error, onRetry }: ContentR
   return (
     <div className="relative group/row">
       {canScrollLeft && (
-        <button
-          onClick={() => scroll('left')}
-          className="absolute left-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-r from-[var(--color-base)] to-transparent items-center justify-center opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity hidden md:flex"
-          aria-label="Scroll left"
-        >
-          <ChevronLeft className="w-6 h-6 text-[var(--color-text)]" />
+        <button onClick={() => scroll('left')} className={`${arrowBtn} left-4`} aria-label="Scroll left">
+          <ChevronLeft className="w-5 h-5" strokeWidth={1.75} />
         </button>
       )}
 
@@ -150,13 +152,12 @@ export function ContentRow({ section, items, loading, error, onRetry }: ContentR
       </div>
 
       {canScrollRight && (
-        <button
-          onClick={() => scroll('right')}
-          className="absolute right-0 top-0 bottom-0 z-10 w-12 bg-gradient-to-l from-[var(--color-base)] to-transparent items-center justify-center opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity hidden md:flex"
-          aria-label="Scroll right"
-        >
-          <ChevronRight className="w-6 h-6 text-[var(--color-text)]" />
-        </button>
+        <>
+          <div className="hidden md:block pointer-events-none absolute right-0 top-0 bottom-2 w-6 bg-gradient-to-l from-[var(--color-bg)] to-transparent" />
+          <button onClick={() => scroll('right')} className={`${arrowBtn} right-4`} aria-label="Scroll right">
+            <ChevronRight className="w-5 h-5" strokeWidth={1.75} />
+          </button>
+        </>
       )}
     </div>
   );

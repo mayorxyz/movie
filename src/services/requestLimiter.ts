@@ -25,3 +25,7 @@ export class RequestLimiter {
 
 // Singleton instance for the entire app
 export const sharedLimiter = new RequestLimiter(4);
+
+// Interactive requests (e.g. search-as-you-type) get their own pool so they
+// are never queued behind background page loads.
+export const interactiveLimiter = new RequestLimiter(6);

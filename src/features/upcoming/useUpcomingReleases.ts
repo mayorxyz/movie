@@ -21,9 +21,8 @@ interface UseUpcomingReleasesResult {
 }
 
 /**
- * Fetch upcoming releases for a given month and type
- * Fetches up to 5 pages sorted by popularity
- * Falls back to US region if primary region returns fewer than minReleasesForFallback
+ * Fetch upcoming releases for a given month and type.
+ * Strictly filters out any releases that have already passed.
  */
 export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions): UseUpcomingReleasesResult {
   const primaryRegion = site.region.default;
@@ -31,6 +30,7 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
   const minReleases = site.settings.minReleasesForFallback;
   const startDate = getFirstDayOfMonth(month);
   const endDate = getLastDayOfMonth(month);
+  const todayStr = today(); // e.g., '2026-11-13'
 
   const query = useQuery({
     queryKey: ['upcoming', month, type],
@@ -50,20 +50,28 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
         allReleases.push(...tvReleases);
       }
 
-      // Filter out items without poster_path
-      // Upcoming is exempt from the released filter; use gte of today for the future view.
-      const filteredReleases = allReleases.filter(release => release.poster_path !== null);
+      // STRICT CLIENT-SIDE FILTER:
+      // 1. Must have a poster
+      // 2. Must have a valid release/air date
+      // 3. Date MUST be today or in the future (no past releases)
+      const filteredReleases = allReleases.filter(release => {
+        if (!release.poster_path) return false;
+        
+        const releaseDate = release.release_date || release.first_air_date;
+        if (!releaseDate) return false;
+        
+        // String comparison works perfectly for 'YYYY-MM-DD' format
+        return releaseDate >= todayStr;
+      });
 
-      // Sort by date then popularity
+      // Sort by date (ascending), then by popularity (descending)
       filteredReleases.sort((a, b) => {
         const dateA = a.release_date || a.first_air_date || '';
         const dateB = b.release_date || b.first_air_date || '';
         
-        // First sort by date
         if (dateA < dateB) return -1;
         if (dateA > dateB) return 1;
         
-        // Then by popularity (descending)
         return b.popularity - a.popularity;
       });
 
@@ -72,7 +80,6 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
     staleTime: tmdb.cache.upcomingCalendar,
     gcTime: tmdb.cache.upcomingCalendar,
     retry: (failureCount, error) => {
-      // Retry on 429/5xx up to 2 times
       const status = (error as Error & { status?: number }).status;
       if (error.message === 'RETRY' || status === 429 || (status !== undefined && status >= 500)) {
         return failureCount < 2;
@@ -80,7 +87,6 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
       return false;
     },
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-    // On 429, use stale cache if available
     placeholderData: (previousData) => previousData,
   });
 
@@ -117,7 +123,6 @@ export function useUpcomingReleases({ month, type }: UseUpcomingReleasesOptions)
 
 /**
  * Fetch movies for a given date range with region fallback
- * Uses with_release_type=2|3|4 (Theatrical limited, Theatrical, Digital)
  */
 async function fetchMoviesForMonth(
   startDate: string,
@@ -127,14 +132,11 @@ async function fetchMoviesForMonth(
   minReleases: number,
   maxPages: number
 ): Promise<UpcomingRelease[]> {
-  // Try primary region first
   let allMovies = await fetchMoviesForRegion(startDate, endDate, primaryRegion, maxPages);
   
-  // If fewer than minReleases, try fallback region
   if (allMovies.length < minReleases && primaryRegion !== fallbackRegion) {
     const fallbackMovies = await fetchMoviesForRegion(startDate, endDate, fallbackRegion, maxPages);
     
-    // Merge results, avoiding duplicates by ID
     const movieIds = new Set(allMovies.map(m => m.id));
     fallbackMovies.forEach(movie => {
       if (!movieIds.has(movie.id)) {
@@ -158,7 +160,7 @@ async function fetchMoviesForRegion(
 ): Promise<UpcomingRelease[]> {
   const allMovies: UpcomingRelease[] = [];
   const todayStr = today();
-  // Future view: clamp the lower bound to today so past titles never leak in.
+  // Clamp the lower bound to today so the API doesn't waste cycles on past titles
   const gte = startDate < todayStr ? todayStr : startDate;
 
   for (let page = 1; page <= maxPages; page++) {
@@ -171,9 +173,7 @@ async function fetchMoviesForRegion(
       page,
     });
 
-    if (!result.results || result.results.length === 0) {
-      break; // No more results
-    }
+    if (!result.results || result.results.length === 0) break;
 
     const movies: UpcomingRelease[] = result.results.map((movie: any) => ({
       id: movie.id,
@@ -190,10 +190,7 @@ async function fetchMoviesForRegion(
 
     allMovies.push(...movies);
 
-    // If we got fewer results than expected, we've reached the end
-    if (result.results.length < 20) {
-      break;
-    }
+    if (result.results.length < 20) break;
   }
 
   return allMovies;
@@ -201,7 +198,6 @@ async function fetchMoviesForRegion(
 
 /**
  * Fetch TV shows for a given date range
- * Uses first_air_date.gte/lte (not with_first_air_date)
  */
 async function fetchTvForMonth(
   startDate: string,
@@ -220,9 +216,7 @@ async function fetchTvForMonth(
       page,
     });
 
-    if (!result.results || result.results.length === 0) {
-      break; // No more results
-    }
+    if (!result.results || result.results.length === 0) break;
 
     const shows: UpcomingRelease[] = result.results.map((show: any) => ({
       id: show.id,
@@ -239,10 +233,7 @@ async function fetchTvForMonth(
 
     allShows.push(...shows);
 
-    // If we got fewer results than expected, we've reached the end
-    if (result.results.length < 20) {
-      break;
-    }
+    if (result.results.length < 20) break;
   }
 
   return allShows;

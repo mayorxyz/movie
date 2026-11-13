@@ -14,41 +14,34 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function CalendarGrid({ month, dayGroups, selectedDay, onDayClick }: CalendarGridProps) {
   const days = useMemo(() => getDaysInMonth(month), [month]);
-  
+
   const releasesByDay = useMemo(() => {
     const map = new Map<string, UpcomingDayGroup>();
-    dayGroups.forEach(group => {
-      map.set(group.date, group);
-    });
+    dayGroups.forEach((group) => map.set(group.date, group));
     return map;
   }, [dayGroups]);
 
-  // Calculate starting offset for first day of month
   const firstDayOfWeek = getDayOfWeek(days[0]);
 
   return (
-    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg p-4">
-      {/* Weekday headers */}
+    <div className="bg-[var(--color-surface)] rounded-[20px] p-4 md:p-5 sticky top-24 self-start z-10">
       <div className="grid grid-cols-7 gap-2 mb-2">
-        {WEEKDAYS.map(day => (
+        {WEEKDAYS.map((day) => (
           <div
             key={day}
-            className="text-center text-xs font-medium text-[var(--color-text-muted)] py-2"
+            className="text-center text-[11px] uppercase tracking-[0.08em] text-[var(--color-text-muted)] py-2"
           >
             {day}
           </div>
         ))}
       </div>
 
-      {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-2" role="grid" aria-label="Calendar">
-        {/* Empty cells for days before first of month */}
         {Array.from({ length: firstDayOfWeek }).map((_, i) => (
           <div key={`empty-${i}`} className="aspect-square" />
         ))}
 
-        {/* Day cells */}
-        {days.map(day => {
+        {days.map((day) => {
           const dayNum = parseInt(day.substring(8, 10), 10);
           const group = releasesByDay.get(day);
           const releaseCount = group?.releases.length || 0;
@@ -59,33 +52,40 @@ export function CalendarGrid({ month, dayGroups, selectedDay, onDayClick }: Cale
             <button
               key={day}
               onClick={() => onDayClick(day)}
-              className={`aspect-square rounded-lg border transition-all flex flex-col items-center justify-center relative ${
-                isSelected
-                  ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10'
-                  : isPast
-                  ? 'border-[var(--color-border)] bg-[var(--color-surface-raised)] opacity-50'
-                  : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-text-muted)]'
-              }`}
               role="gridcell"
               aria-label={`${dayNum} ${releaseCount > 0 ? `${releaseCount} ${site.copy.upcoming.dayReleases}` : ''}`}
               aria-selected={isSelected}
+              className={`aspect-square rounded-2xl flex flex-col items-center justify-center transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${
+                isSelected
+                  ? 'bg-[var(--color-accent)]'
+                  : isPast
+                  ? 'bg-[var(--color-surface-raised)] opacity-40 hover:opacity-60'
+                  : 'bg-[var(--color-surface-raised)] hover:bg-[var(--color-border)]'
+              }`}
             >
-              <span className={`text-sm font-medium ${isPast ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text)]'}`}>
+              <span
+                className={`text-[14px] leading-none font-medium tabular-nums ${
+                  isSelected ? 'text-white' : isPast ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text)]'
+                }`}
+              >
                 {dayNum}
               </span>
-              
-              {/* Poster dots indicator */}
+
               {releaseCount > 0 && (
-                <div className="flex gap-0.5 mt-1">
-                  {Array.from({ length: Math.min(releaseCount, 3) }).map((_, i) => (
-                    <div
+                <div className="flex items-center justify-center gap-px mt-0.5 leading-none max-w-full">
+                  {Array.from({ length: Math.min(releaseCount, releaseCount > 3 ? 2 : 3) }).map((_, i) => (
+                    <span
                       key={i}
-                      className="w-1 h-1 rounded-full bg-[var(--color-accent)]"
+                      className={`w-[3px] h-[3px] rounded-full shrink-0 ${isSelected ? 'bg-white' : 'bg-[var(--color-accent)]'}`}
                     />
                   ))}
                   {releaseCount > 3 && (
-                    <span className="text-xs text-[var(--color-accent)] ml-0.5">
-                      +{releaseCount - 3}
+                    <span
+                      className={`text-[8px] leading-none ml-px tabular-nums ${
+                        isSelected ? 'text-white' : 'text-[var(--color-accent)]'
+                      }`}
+                    >
+                      +{releaseCount - 2}
                     </span>
                   )}
                 </div>

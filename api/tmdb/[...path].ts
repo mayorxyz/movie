@@ -1,4 +1,14 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// Minimal structural types so the function has no external type dependency.
+interface ApiRequest {
+  method?: string;
+  url?: string;
+}
+
+interface ApiResponse {
+  setHeader(name: string, value: string): void;
+  status(code: number): ApiResponse;
+  json(body: unknown): void;
+}
 
 // TMDB API base URL
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -12,8 +22,40 @@ const ALLOWED_ENDPOINTS = [
   '/search/',
   '/discover/',
   '/genre/',
+  '/collection/',
   '/configuration',
 ];
+
+// Query params that would let a caller override our credentials or probe auth.
+const FORBIDDEN_QUERY_PARAMS = ['api_key', 'access_token', 'token', 'authorization'];
+
+// Only plain TMDB paths: no traversal, protocols, backslashes or stray segments.
+const SAFE_PATH = /^\/(?:[A-Za-z0-9_-]+\/?)+$/;
+
+function normalizeTmdbPath(pathname: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  if (decoded.includes('..') || decoded.includes('\\') || decoded.includes('//')) return null;
+  if (!SAFE_PATH.test(decoded)) return null;
+  return decoded;
+}
+
+function hasForbiddenParams(url: URL): boolean {
+  for (const key of url.searchParams.keys()) {
+    if (FORBIDDEN_QUERY_PARAMS.includes(key.toLowerCase())) return true;
+  }
+  return false;
+}
+
+function setSecurityHeaders(res: ApiResponse) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-TMDB-Proxy', '1');
+}
 
 // Cache TTLs in seconds (matching config/tmdb.ts cache settings)
 const CACHE_TTLS = {
@@ -40,43 +82,44 @@ function isAllowedEndpoint(path: string): boolean {
   return ALLOWED_ENDPOINTS.some(endpoint => path.startsWith(endpoint));
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+  setSecurityHeaders(res);
+
   const requestUrl = new URL(req.url || '/', 'http://localhost');
 
-  // Health check endpoint
+  // Health check endpoint: never reveal whether secrets are configured.
   if (requestUrl.pathname === '/api/health' || requestUrl.pathname === '/api/tmdb/health') {
-    const tokenConfigured = !!process.env.TMDB_TOKEN;
-    return res.status(200).json({
-      status: 'ok',
-      tokenConfigured,
-    });
+    return res.status(200).json({ status: 'ok' });
   }
 
   // Only allow GET requests
   if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Get TMDB token from environment
+  if (hasForbiddenParams(requestUrl)) {
+    return res.status(400).json({ error: 'Invalid query parameters' });
+  }
+
+  // Get TMDB token from environment (server-only; never sent to the client)
   const tmdbToken = process.env.TMDB_TOKEN;
   if (!tmdbToken) {
     console.error('TMDB_TOKEN environment variable is not set');
     return res.status(500).json({ error: 'TMDB token not configured' });
   }
 
-  // Extract the path after /api/tmdb/
-  const tmdbPath = requestUrl.pathname.replace(/^\/api\/tmdb/, '');
-  
+  // Extract and validate the path after /api/tmdb/
+  const rawPath = requestUrl.pathname.replace(/^\/api\/tmdb/, '');
+  const tmdbPath = normalizeTmdbPath(rawPath);
+
   if (!tmdbPath || tmdbPath === '/') {
     return res.status(400).json({ error: 'No endpoint specified' });
   }
 
   // Check if endpoint is allowlisted
   if (!isAllowedEndpoint(tmdbPath)) {
-    return res.status(400).json({ 
-      error: 'Endpoint not allowed',
-      path: tmdbPath,
-    });
+    return res.status(400).json({ error: 'Endpoint not allowed' });
   }
 
   // Build the full TMDB URL with query parameters
@@ -109,9 +152,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error) {
     console.error('TMDB proxy error:', error);
-    return res.status(500).json({ 
-      error: 'Failed to fetch from TMDB',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    return res.status(500).json({ error: 'Failed to fetch from TMDB' });
   }
 }

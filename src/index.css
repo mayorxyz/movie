@@ -7,8 +7,12 @@
   --color-surface-raised: #1C1C1F;
   --color-text: #F5F5F5;
   --color-text-muted: #8A8A8D;
-  --color-accent: #D4A853;
-  --color-accent-hover: #E0B86A;
+  
+  /* ✨ Premium Sophisticated Gray ✨ */
+  --color-accent: #A8A8A8;       /* Elegant, light gray */
+  --color-accent-hover: #C8C8C8; /* Brighter gray on hover */
+  --color-rating: #B0B0B0;       /* Refined gray for stars */
+  
   --color-border: #2A2A2D;
   --color-error: #E5484D;
   --color-success: #46A758;
@@ -164,4 +168,20 @@ body {
 
 .tooltip-coming-soon:hover::after {
   opacity: 1;
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, var(--color-surface) 0%, var(--color-surface-raised) 50%, var(--color-surface) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
 }

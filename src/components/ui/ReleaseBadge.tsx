@@ -14,7 +14,10 @@ export function ReleaseBadge({ releaseDate, firstAirDate, className = '' }: Rele
   if (!date || date.trim() === '' || date > todayStr) {
     const label = date && date.trim() !== '' ? `Coming ${date}` : 'Release date unknown';
     return (
-      <span className={`px-3 py-1 text-xs font-medium rounded-full bg-[var(--color-accent)]/15 border border-[var(--color-accent)] text-[var(--color-accent)] ${className}`}>
+      <span
+        className={`inline-flex items-center h-7 px-3 rounded-full text-[12px] font-medium bg-[var(--color-accent)]/15 text-[var(--color-accent)] ${className}`}
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] mr-2" />
         {label}
       </span>
     );
