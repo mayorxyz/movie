@@ -27,23 +27,20 @@ function parseTmdbPath(url) {
   for (const key of parsed.searchParams.keys()) {
     if (FORBIDDEN_QUERY_PARAMS.includes(key.toLowerCase())) return null;
   }
-  let decoded;
-  try {
-    decoded = decodeURIComponent(parsed.pathname);
-  } catch {
-    return null;
-  }
-  if (decoded.includes('..') || decoded.includes('\\') || decoded.includes('//')) return null;
-  if (!SAFE_PATH.test(decoded)) return null;
-  const tmdbPath = decoded.replace(/^\/api\/tmdb/, '');
-  if (!tmdbPath || tmdbPath === '/') return null;
-  if (!ALLOWED_ENDPOINTS.some((endpoint) => tmdbPath.startsWith(endpoint))) return null;
-  return `${tmdbPath}${parsed.search}`;
+  const rawPath = parsed.searchParams.get('path') || '';
+  if (!rawPath.startsWith('/')) return null;
+  if (rawPath.includes('..') || rawPath.includes('\\') || rawPath.includes('//')) return null;
+  if (!SAFE_PATH.test(rawPath)) return null;
+  if (!ALLOWED_ENDPOINTS.some((endpoint) => rawPath.startsWith(endpoint))) return null;
+  const params = new URLSearchParams(parsed.searchParams);
+  params.delete('path');
+  const query = params.toString();
+  return `${rawPath}${query ? `?${query}` : ''}`;
 }
 
 function localTmdbProxy(token) {
   const handleRequest = async (req, res, next) => {
-    if (!req.url?.startsWith('/api/tmdb/')) return next();
+    if (!req.url?.startsWith('/api/tmdb')) return next();
     if (req.method !== 'GET') {
       res.statusCode = 405;
       res.setHeader('Allow', 'GET');

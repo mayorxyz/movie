@@ -50,7 +50,8 @@ export interface TmdbRequestOptions {
 }
 
 export async function tmdbRequest<T>(endpoint: string, params?: Params, options?: TmdbRequestOptions): Promise<T> {
-  const url = new URL(`${window.location.origin}${PROXY_BASE_URL}${endpoint}`);
+  const url = new URL(`${window.location.origin}${PROXY_BASE_URL}`);
+  url.searchParams.set('path', endpoint);
   url.searchParams.set('language', 'en-US');
 
   Object.entries(params ?? {}).forEach(([key, value]) => {

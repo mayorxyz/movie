@@ -32,16 +32,11 @@ const FORBIDDEN_QUERY_PARAMS = ['api_key', 'access_token', 'token', 'authorizati
 // Only plain TMDB paths: no traversal, protocols, backslashes or stray segments.
 const SAFE_PATH = /^\/(?:[A-Za-z0-9_-]+\/?)+$/;
 
-function normalizeTmdbPath(pathname: string): string | null {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-  if (decoded.includes('..') || decoded.includes('\\') || decoded.includes('//')) return null;
-  if (!SAFE_PATH.test(decoded)) return null;
-  return decoded;
+function normalizeTmdbPath(rawPath: string): string | null {
+  if (!rawPath.startsWith('/')) return null;
+  if (rawPath.includes('..') || rawPath.includes('\\') || rawPath.includes('//')) return null;
+  if (!SAFE_PATH.test(rawPath)) return null;
+  return rawPath;
 }
 
 function hasForbiddenParams(url: URL): boolean {
@@ -79,7 +74,7 @@ function getCacheTTL(path: string): number {
 }
 
 function isAllowedEndpoint(path: string): boolean {
-  return ALLOWED_ENDPOINTS.some(endpoint => path.startsWith(endpoint));
+  return ALLOWED_ENDPOINTS.some((endpoint) => path.startsWith(endpoint));
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
@@ -88,7 +83,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const requestUrl = new URL(req.url || '/', 'http://localhost');
 
   // Health check endpoint: never reveal whether secrets are configured.
-  if (requestUrl.pathname === '/api/health' || requestUrl.pathname === '/api/tmdb/health') {
+  if (requestUrl.pathname === '/api/health') {
     return res.status(200).json({ status: 'ok' });
   }
 
@@ -109,8 +104,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return res.status(500).json({ error: 'TMDB token not configured' });
   }
 
-  // Extract and validate the path after /api/tmdb/
-  const rawPath = requestUrl.pathname.replace(/^\/api\/tmdb/, '');
+  // The TMDB path is passed as ?path=/trending/all/week so the function is a
+  // single, exactly-matched route (/api/tmdb). Vercel does not reliably match
+  // nested catch-all API files such as api/tmdb/[...path].ts.
+  const rawPath = requestUrl.searchParams.get('path') || '';
   const tmdbPath = normalizeTmdbPath(rawPath);
 
   if (!tmdbPath || tmdbPath === '/') {
@@ -122,8 +119,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return res.status(400).json({ error: 'Endpoint not allowed' });
   }
 
-  // Build the full TMDB URL with query parameters
-  const tmdbUrl = `${TMDB_BASE_URL}${tmdbPath}${requestUrl.search}`;
+  // Build the full TMDB URL with the remaining query parameters.
+  const forwardedParams = new URLSearchParams(requestUrl.searchParams);
+  forwardedParams.delete('path');
+  const query = forwardedParams.toString();
+  const tmdbUrl = `${TMDB_BASE_URL}${tmdbPath}${query ? `?${query}` : ''}`;
 
   try {
     // Forward request to TMDB API
@@ -149,7 +149,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     // Return the response with TMDB's status code
     return res.status(response.status).json(data);
-
   } catch (error) {
     console.error('TMDB proxy error:', error);
     return res.status(500).json({ error: 'Failed to fetch from TMDB' });

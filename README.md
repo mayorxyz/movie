@@ -38,7 +38,7 @@ cp .env.example .env   # then fill in TMDB_TOKEN
 npm run dev
 ```
 
-The dev server runs at <http://localhost:3000>. Requests to `/api/tmdb/*` are proxied to TMDB by a Vite middleware, so the token stays on the server during development too.
+The dev server runs at <http://localhost:3000>. Requests to `/api/tmdb?path=...` are proxied to TMDB by a Vite middleware, so the token stays on the server during development too.
 
 ## Environment variables
 
@@ -62,7 +62,7 @@ Anything prefixed with `VITE_` is embedded in the public bundle. Only the proxy 
 ## Project structure
 
 ```
-api/tmdb/[...path].ts   Serverless TMDB proxy (Vercel function)
+api/tmdb.ts              Serverless TMDB proxy (Vercel function)
 public/                 Static assets (favicon)
 src/
   components/           Layout, UI primitives and shared components
@@ -95,9 +95,9 @@ vite.config.js          Vite config and local TMDB proxy
 1. Push the repository to GitHub/GitLab/Bitbucket and import it in Vercel.
 2. Vercel detects Vite via `vercel.json` (`npm run build`, output `dist`).
 3. Add `TMDB_TOKEN` under **Project Settings → Environment Variables** for Production, Preview and Development. Do not add it as a `VITE_` variable.
-4. Deploy. The `api/tmdb/[...path].ts` function is deployed automatically, and the SPA rewrite serves `index.html` for client routes.
+4. Deploy. The `api/tmdb.ts` and `api/health.ts` functions are deployed automatically, and the SPA rewrite serves `index.html` for client routes.
 
-For other hosts, run `npm run build` and serve `dist/` as a single-page app, and deploy `api/tmdb/[...path].ts` as a serverless function (or provide an equivalent proxy) that sets `TMDB_TOKEN` in its environment.
+For other hosts, run `npm run build` and serve `dist/` as a single-page app, and deploy `api/tmdb.ts` as a serverless function (or provide an equivalent proxy) that sets `TMDB_TOKEN` in its environment.
 
 ## Attribution
 
