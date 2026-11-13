@@ -87,18 +87,38 @@ const TOKEN_ENV_NAMES = [
   'TMDB_KEY',
 ];
 
+function cleanToken(raw: string | undefined): string {
+  return (raw ?? '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .trim();
+}
+
 function readToken(): string {
+  // Preferred names first.
   for (const name of TOKEN_ENV_NAMES) {
-    const raw = process.env[name];
-    if (!raw) continue;
-    const value = raw
-      .trim()
-      .replace(/^['"]|['"]$/g, '')
-      .replace(/^Bearer\s+/i, '')
-      .trim();
+    const value = cleanToken(process.env[name]);
     if (value) return value;
   }
+
+  // Fallback: accept any TMDB-looking token/key variable, including a VITE_
+  // prefixed one, so a differently named Vercel variable still works. This is
+  // read only inside the serverless function.
+  for (const [name, raw] of Object.entries(process.env)) {
+    if (!/TMDB.*(TOKEN|KEY)$/i.test(name)) continue;
+    const value = cleanToken(raw);
+    if (value) return value;
+  }
+
   return '';
+}
+
+/** Names only, never values, for deployment diagnostics. */
+function detectedTmdbEnvNames(): string[] {
+  return Object.keys(process.env)
+    .filter((name) => /TMDB/i.test(name))
+    .sort();
 }
 
 /** v4 read tokens are JWTs; v3 API keys are passed as a query parameter. */
@@ -129,10 +149,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   // Get TMDB token from environment (server-only; never sent to the client)
   const tmdbToken = readToken();
   if (!tmdbToken) {
-    console.error(`TMDB token not configured. Set one of: ${TOKEN_ENV_NAMES.join(', ')}`);
+    const detectedEnv = detectedTmdbEnvNames();
+    console.error(
+      `TMDB token not configured. Expected one of: ${TOKEN_ENV_NAMES.join(', ')}. Detected TMDB env names: ${detectedEnv.join(', ') || 'none'}`,
+    );
     return res.status(500).json({
       error: 'TMDB token not configured',
       expectedEnv: TOKEN_ENV_NAMES,
+      detectedEnv,
     });
   }
 
