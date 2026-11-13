@@ -16,6 +16,31 @@ const ALLOWED_ENDPOINTS = [
 // Params that could override our server-side credentials.
 const FORBIDDEN_QUERY_PARAMS = ['api_key', 'access_token', 'token', 'authorization'];
 const SAFE_PATH = /^\/(?:[A-Za-z0-9_-]+\/?)+$/;
+const TOKEN_ENV_NAMES = [
+  'TMDB_TOKEN',
+  'TMDB_API_READ_ACCESS_TOKEN',
+  'TMDB_ACCESS_TOKEN',
+  'TMDB_API_KEY',
+  'TMDB_KEY',
+];
+
+function readToken(env) {
+  for (const name of TOKEN_ENV_NAMES) {
+    const raw = env[name];
+    if (!raw) continue;
+    const value = String(raw)
+      .trim()
+      .replace(/^['"]|['"]$/g, '')
+      .replace(/^Bearer\s+/i, '')
+      .trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function isBearerToken(token) {
+  return token.startsWith('eyJ') || token.split('.').length === 3;
+}
 
 function parseTmdbPath(url) {
   let parsed;
@@ -38,7 +63,8 @@ function parseTmdbPath(url) {
   return `${rawPath}${query ? `?${query}` : ''}`;
 }
 
-function localTmdbProxy(token) {
+function localTmdbProxy(env) {
+  const token = readToken(env);
   const handleRequest = async (req, res, next) => {
     if (!req.url?.startsWith('/api/tmdb')) return next();
     if (req.method !== 'GET') {
@@ -61,8 +87,15 @@ function localTmdbProxy(token) {
     }
 
     try {
-      const response = await fetch(`https://api.themoviedb.org/3${tmdbPath}`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      const bearer = isBearerToken(token);
+      const target = `https://api.themoviedb.org/3${tmdbPath}${
+        bearer ? '' : `${tmdbPath.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(token)}`
+      }`;
+      const response = await fetch(target, {
+        headers: {
+          Accept: 'application/json',
+          ...(bearer ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
       res.statusCode = response.status;
       res.setHeader('Content-Type', 'application/json');
@@ -94,7 +127,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
-  plugins: [react(), tailwindcss(), localTmdbProxy(env.TMDB_TOKEN)],
+  plugins: [react(), tailwindcss(), localTmdbProxy(env)],
   server: {
     host: "0.0.0.0",
     port: 3000,

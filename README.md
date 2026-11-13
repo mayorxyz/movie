@@ -44,7 +44,7 @@ The dev server runs at <http://localhost:3000>. Requests to `/api/tmdb?path=...`
 
 | Variable | Scope | Required | Description |
 | --- | --- | --- | --- |
-| `TMDB_TOKEN` | Server only | Yes | TMDB API read access token. **Never** prefix it with `VITE_`. |
+| `TMDB_TOKEN` | Server only | Yes | TMDB API read access token. **Never** prefix it with `VITE_`. Aliases `TMDB_API_READ_ACCESS_TOKEN`, `TMDB_ACCESS_TOKEN`, `TMDB_API_KEY` and `TMDB_KEY` are also accepted. |
 | `VITE_TMDB_PROXY_URL` | Client | No | Public proxy path, defaults to `/api/tmdb`. |
 
 Anything prefixed with `VITE_` is embedded in the public bundle. Only the proxy path belongs there.

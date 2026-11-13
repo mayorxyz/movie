@@ -77,6 +77,35 @@ function isAllowedEndpoint(path: string): boolean {
   return ALLOWED_ENDPOINTS.some((endpoint) => path.startsWith(endpoint));
 }
 
+// Accept the common names people use in Vercel so a correctly configured
+// project works regardless of which label the token was saved under.
+const TOKEN_ENV_NAMES = [
+  'TMDB_TOKEN',
+  'TMDB_API_READ_ACCESS_TOKEN',
+  'TMDB_ACCESS_TOKEN',
+  'TMDB_API_KEY',
+  'TMDB_KEY',
+];
+
+function readToken(): string {
+  for (const name of TOKEN_ENV_NAMES) {
+    const raw = process.env[name];
+    if (!raw) continue;
+    const value = raw
+      .trim()
+      .replace(/^['"]|['"]$/g, '')
+      .replace(/^Bearer\s+/i, '')
+      .trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+/** v4 read tokens are JWTs; v3 API keys are passed as a query parameter. */
+function isBearerToken(token: string): boolean {
+  return token.startsWith('eyJ') || token.split('.').length === 3;
+}
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   setSecurityHeaders(res);
 
@@ -98,10 +127,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   // Get TMDB token from environment (server-only; never sent to the client)
-  const tmdbToken = process.env.TMDB_TOKEN;
+  const tmdbToken = readToken();
   if (!tmdbToken) {
-    console.error('TMDB_TOKEN environment variable is not set');
-    return res.status(500).json({ error: 'TMDB token not configured' });
+    console.error(`TMDB token not configured. Set one of: ${TOKEN_ENV_NAMES.join(', ')}`);
+    return res.status(500).json({
+      error: 'TMDB token not configured',
+      expectedEnv: TOKEN_ENV_NAMES,
+    });
   }
 
   // The TMDB path is passed as ?path=/trending/all/week so the function is a
@@ -122,6 +154,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   // Build the full TMDB URL with the remaining query parameters.
   const forwardedParams = new URLSearchParams(requestUrl.searchParams);
   forwardedParams.delete('path');
+  const bearer = isBearerToken(tmdbToken);
+  if (!bearer) forwardedParams.set('api_key', tmdbToken);
   const query = forwardedParams.toString();
   const tmdbUrl = `${TMDB_BASE_URL}${tmdbPath}${query ? `?${query}` : ''}`;
 
@@ -130,8 +164,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const response = await fetch(tmdbUrl, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${tmdbToken}`,
         'Accept': 'application/json',
+        ...(bearer ? { 'Authorization': `Bearer ${tmdbToken}` } : {}),
       },
     });
 
